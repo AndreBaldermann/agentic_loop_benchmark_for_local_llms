@@ -8,6 +8,7 @@ import tempfile
 import urllib.error
 import urllib.request
 import time
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,40 @@ REVIEWER_NUM_PREDICT = 2048
 
 CODER_TEMPERATURE = 0.1
 REVIEWER_TEMPERATURE = 0.0
+
+
+@dataclass(frozen=True)
+class AgentConfig:
+    """Configuration for a single Ollama-backed agent role."""
+
+    role: str
+    model: str
+    num_ctx: int
+    temperature: float
+    num_predict: int
+    json_mode: bool = False
+
+
+CODER_AGENT = AgentConfig(
+    role="Coder",
+    model=CODER,
+    num_ctx=CODER_CTX,
+    temperature=CODER_TEMPERATURE,
+    num_predict=CODER_NUM_PREDICT,
+)
+REVIEWER_AGENT = AgentConfig(
+    role="Reviewer",
+    model=REVIEWER,
+    num_ctx=REVIEWER_CTX,
+    temperature=REVIEWER_TEMPERATURE,
+    num_predict=REVIEWER_NUM_PREDICT,
+    json_mode=True,
+)
+
+AGENTS = {
+    CODER_AGENT.role: CODER_AGENT,
+    REVIEWER_AGENT.role: REVIEWER_AGENT,
+}
 
 MAX_FEEDBACK_ITEMS = 6
 MAX_FEEDBACK_CHARS = 4000
@@ -133,6 +168,18 @@ def ollama(
         "num_predict": num_predict,
         "json_mode": json_mode,
     }
+
+
+def run_agent(config: AgentConfig, prompt: str) -> dict[str, Any]:
+    """Run an agent role using its configuration."""
+    return ollama(
+        config.model,
+        prompt,
+        num_ctx=config.num_ctx,
+        temperature=config.temperature,
+        num_predict=config.num_predict,
+        json_mode=config.json_mode,
+    )
 
 
 def extract_python_code(text: str) -> str:
@@ -417,11 +464,11 @@ def main():
     session_start = time.time()
 
     print("\nStarte Agentenschleife...")
-    print(f"Coder    : {CODER}")
-    print(f"Reviewer : {REVIEWER}")
+    for agent in AGENTS.values():
+        print(f"{agent.role:<8}: {agent.model}")
     print(f"Max Runden: {MAX_ROUNDS}")
-    print(f"Coder Kontext    : {CODER_CTX} tokens")
-    print(f"Reviewer Kontext : {REVIEWER_CTX} tokens")
+    for agent in AGENTS.values():
+        print(f"{agent.role:<8} Kontext: {agent.num_ctx} tokens")
     print(f"Ollama API       : {OLLAMA_API_URL}")
 
     for round_no in range(1, MAX_ROUNDS + 1):
@@ -445,14 +492,7 @@ def main():
 
         print_block(f"RUNDE {round_no} - CODER PROMPT", coder_prompt)
 
-        coder_result = ollama(
-            CODER,
-            coder_prompt,
-            num_ctx=CODER_CTX,
-            temperature=CODER_TEMPERATURE,
-            num_predict=CODER_NUM_PREDICT,
-            json_mode=False,
-        )
+        coder_result = run_agent(CODER_AGENT, coder_prompt)
 
         raw_code = coder_result["output"]
         code = normalize_code(extract_python_code(raw_code))
@@ -481,14 +521,7 @@ def main():
 
         print_block(f"RUNDE {round_no} - REVIEWER PROMPT", review_prompt)
 
-        reviewer_result = ollama(
-            REVIEWER,
-            review_prompt,
-            num_ctx=REVIEWER_CTX,
-            temperature=REVIEWER_TEMPERATURE,
-            num_predict=REVIEWER_NUM_PREDICT,
-            json_mode=True,
-        )
+        reviewer_result = run_agent(REVIEWER_AGENT, review_prompt)
         review = parse_review(reviewer_result["output"])
 
         if not syntax_ok:
