@@ -82,6 +82,10 @@ class PdfReportTests(unittest.TestCase):
         self.assertIn("(1/1)", pdf_text)
         self.assertIn("(337)", pdf_text)
         self.assertIn("(83)", pdf_text)
+        self.assertIn("(green: 1 round / min tokens)", pdf_text)
+        self.assertIn("0.350 0.820 0.350 rg", pdf_text)
+        self.assertIn("0.900 0.250 0.250 rg", pdf_text)
+        self.assertIn("1.00 w 0.000 0.000 0.000 RG", pdf_text)
 
     def test_zero_tokens_are_blue_and_positive_tokens_interpolate(self):
         """Verify token color rules use blue for zero and redder colors for higher usage."""

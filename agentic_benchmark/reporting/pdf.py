@@ -16,6 +16,10 @@ TASK_COL_WIDTH = 150.0
 MIN_EXPERIMENT_GROUP_WIDTH = 78.0
 MAX_EXPERIMENT_GROUP_WIDTH = 132.0
 SUB_COLUMNS = ("R", "TCT", "TRT")
+GREEN = (0.35, 0.82, 0.35)
+RED = (0.90, 0.25, 0.25)
+GRAY = (0.66, 0.66, 0.66)
+BLUE = (0.35, 0.60, 0.95)
 
 
 @dataclass(frozen=True)
@@ -226,6 +230,33 @@ def stroke_rect_command(x: float, y: float, width: float, height: float) -> str:
         command, str: PDF stroke command.
     """
     return f"0.75 0.75 0.75 RG {x:.2f} {y:.2f} {width:.2f} {height:.2f} re S"
+
+
+def line_command(
+    x1: float,
+    y1: float,
+    x2: float,
+    y2: float,
+    *,
+    color: tuple[float, float, float] = (0.0, 0.0, 0.0),
+    width: float = 0.8,
+) -> str:
+    """
+    Build a stroked line command.
+
+    Args:
+        x1, float: start x coordinate in points.
+        y1, float: start y coordinate in points.
+        x2, float: end x coordinate in points.
+        y2, float: end y coordinate in points.
+        color, tuple[float, float, float]: RGB stroke color in range 0.0..1.0.
+        width, float: stroke width in points.
+
+    Returns:
+        command, str: PDF line stroke command.
+    """
+    r, g, b = color
+    return f"{width:.2f} w {r:.3f} {g:.3f} {b:.3f} RG {x1:.2f} {y1:.2f} m {x2:.2f} {y2:.2f} l S 1 w"
 
 
 def truncate_text(text: str, max_chars: int) -> str:
@@ -504,14 +535,14 @@ def cell_color(cell: OverviewCell | None) -> tuple[float, float, float]:
     if cell is None:
         return (0.96, 0.96, 0.96)
     if "stagnation_detected" in cell.stop_reasons:
-        return (0.66, 0.66, 0.66)
+        return GRAY
     if "max_rounds_reached" in cell.stop_reasons:
-        return (0.35, 0.60, 0.95)
+        return BLUE
     if cell.max_rounds <= 1:
         ratio = 0.0
     else:
         ratio = (cell.rounds_used - 1) / (cell.max_rounds - 1)
-    return interpolate_color((0.35, 0.82, 0.35), (0.90, 0.25, 0.25), ratio)
+    return interpolate_color(GREEN, RED, ratio)
 
 
 
@@ -557,12 +588,12 @@ def token_color(tokens: float, token_range: TokenRange) -> tuple[float, float, f
         color, tuple[float, float, float]: blue for zero tokens, otherwise green-to-red by relative cost.
     """
     if tokens <= 0:
-        return (0.35, 0.60, 0.95)
+        return BLUE
     if token_range.maximum <= token_range.minimum:
         ratio = 0.0
     else:
         ratio = (tokens - token_range.minimum) / (token_range.maximum - token_range.minimum)
-    return interpolate_color((0.35, 0.82, 0.35), (0.90, 0.25, 0.25), ratio)
+    return interpolate_color(GREEN, RED, ratio)
 
 
 def token_ranges_for_cells(cells: dict[tuple[str, str], OverviewCell]) -> tuple[TokenRange, TokenRange]:
@@ -599,6 +630,51 @@ def ordered_values(rows: list[dict[str, str]], key: str) -> list[str]:
             values.append(value)
             seen.add(value)
     return values
+
+
+def draw_legend_item(
+    commands: list[str],
+    x: float,
+    y: float,
+    color: tuple[float, float, float],
+    label: str,
+) -> float:
+    """
+    Draw one colored legend swatch and label.
+
+    Args:
+        commands, list[str]: PDF command list to append to.
+        x, float: left coordinate in points.
+        y, float: bottom coordinate in points.
+        color, tuple[float, float, float]: RGB swatch color.
+        label, str: legend label next to the swatch.
+
+    Returns:
+        next_x, float: recommended x coordinate for the following legend item.
+    """
+    swatch_size = 7.0
+    commands.append(fill_rect_command(x, y, swatch_size, swatch_size, color))
+    commands.append(stroke_rect_command(x, y, swatch_size, swatch_size))
+    commands.append(text_command(x + swatch_size + 3, y + 1, label, size=6))
+    return x + swatch_size + 5 + len(label) * 3.1
+
+
+def draw_color_legend(commands: list[str], x: float, y: float) -> None:
+    """
+    Draw the PDF color legend with actual color samples.
+
+    Args:
+        commands, list[str]: PDF command list to append to.
+        x, float: left coordinate in points.
+        y, float: bottom coordinate in points.
+
+    Returns:
+        None.
+    """
+    next_x = draw_legend_item(commands, x, y, GREEN, "green: 1 round / min tokens")
+    next_x = draw_legend_item(commands, next_x, y, RED, "red: max rounds / max tokens")
+    next_x = draw_legend_item(commands, next_x, y, GRAY, "gray: stagnation")
+    draw_legend_item(commands, next_x, y, BLUE, "blue: max rounds / 0 tokens")
 
 
 def draw_subcell(
@@ -659,15 +735,15 @@ def draw_table_page(
     commands: list[str] = []
     coder_token_range, reviewer_token_range = token_ranges
     commands.append(text_command(MARGIN, PAGE_HEIGHT - 24, title, size=TITLE_FONT_SIZE))
-    commands.append(text_command(MARGIN, PAGE_HEIGHT - 40, "Overview: R=rounds_used/max_rounds, TCT=Coder generated tokens, TRT=Reviewer generated tokens", size=8))
     commands.append(
         text_command(
             MARGIN,
-            PAGE_HEIGHT - 53,
-            "Color: R green=1 round, red=max rounds, gray=stagnation, blue=max rounds/zero tokens; TCT/TRT green=min tokens, red=max tokens",
-            size=7,
+            PAGE_HEIGHT - 40,
+            "Overview: R=rounds_used/max_rounds, TCT=Coder generated tokens, TRT=Reviewer generated tokens",
+            size=8,
         )
     )
+    draw_color_legend(commands, MARGIN, PAGE_HEIGHT - 58)
 
     available_width = PAGE_WIDTH - 2 * MARGIN - TASK_COL_WIDTH
     group_width = min(
@@ -675,7 +751,7 @@ def draw_table_page(
         max(MIN_EXPERIMENT_GROUP_WIDTH, available_width / max(1, len(experiments))),
     )
     sub_width = group_width / len(SUB_COLUMNS)
-    table_top = PAGE_HEIGHT - 76
+    table_top = PAGE_HEIGHT - 94
     header_y = table_top - ROW_HEIGHT
     info_y = header_y - ROW_HEIGHT
 
@@ -713,6 +789,12 @@ def draw_table_page(
             )
             for sub_idx, (label, color) in enumerate(zip(labels, colors)):
                 draw_subcell(commands, group_x + sub_idx * sub_width, y, sub_width, label, color)
+
+    table_bottom = info_y - len(tasks) * ROW_HEIGHT
+    table_top_line = header_y + ROW_HEIGHT
+    for col_idx in range(1, len(experiments)):
+        separator_x = MARGIN + TASK_COL_WIDTH + col_idx * group_width
+        commands.append(line_command(separator_x, table_bottom, separator_x, table_top_line, width=1.0))
 
     footer = f"Page {page_number}/{total_pages_hint}"
     commands.append(text_command(PAGE_WIDTH - MARGIN - 70, 16, footer, size=7))
