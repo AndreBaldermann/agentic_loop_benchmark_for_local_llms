@@ -1,0 +1,543 @@
+from __future__ import annotations
+
+import argparse
+import csv
+import sys
+from dataclasses import replace
+from datetime import datetime
+from pathlib import Path
+
+from .config_loader import load_experiment_configs, validate_experiment_configs
+from .loop_runner import print_interactive_summary, run_agentic_loop
+from .ollama_client import unload_agent, warm_agent
+from .metrics import ResultsWriter
+from .reporting.pdf import generate_overview_pdf
+from .models import BenchmarkTask, ExperimentConfig
+from .task_providers import load_tasks
+
+DEFAULT_CONFIG = "configs/loop_configs.csv"
+
+
+def read_interactive_task_text(args: argparse.Namespace) -> str:
+    """
+    Read the task text for interactive mode without falling back to benchmark tasks.
+
+    Args:
+        args, argparse.Namespace: parsed interactive CLI arguments with optional prompt sources.
+
+    Returns:
+        task_text, str: user-provided task text stripped of surrounding whitespace.
+    """
+    if args.prompt:
+        return str(args.prompt).strip()
+    if args.prompt_file:
+        return Path(args.prompt_file).read_text(encoding="utf-8").strip()
+
+    if not sys.stdin.isatty():
+        return sys.stdin.read().strip()
+
+    print("\nAufgabe für die Agenten. Mehrzeilige Eingabe ist erlaubt.")
+    print("Beenden mit einer leeren Zeile oder Ctrl-D:")
+    lines: list[str] = []
+    while True:
+        try:
+            line = input("> " if not lines else "| ")
+        except EOFError:
+            break
+        if not line and lines:
+            break
+        lines.append(line)
+    return "\n".join(lines).strip()
+
+
+def load_interactive_experiments(args: argparse.Namespace) -> list[ExperimentConfig]:
+    """
+    Load experiment configurations used by interactive mode.
+
+    Args:
+        args, argparse.Namespace: parsed interactive CLI arguments containing config and optional experiment_id.
+
+    Returns:
+        experiments, list[ExperimentConfig]: selected config rows adjusted to use the interactive task provider.
+
+    Raises:
+        ValueError: when the config is invalid, empty, or the requested experiment_id is missing.
+    """
+    configs = load_experiment_configs(args.config)
+    errors = validate_experiment_configs(configs)
+    if errors:
+        raise ValueError("Invalid interactive config: " + "; ".join(errors))
+    if not configs:
+        raise ValueError(f"No experiment configurations found in {args.config}")
+
+    selected_configs = configs
+    if args.experiment_id:
+        selected_configs = [config for config in configs if config.experiment_id == args.experiment_id]
+        if not selected_configs:
+            available = ", ".join(config.experiment_id for config in configs)
+            raise ValueError(f"Unknown experiment_id for interactive mode: {args.experiment_id}. Available: {available}")
+
+    # The model/loop settings come from CSV rows, but the task itself is a
+    # user-provided interactive prompt rather than a provider-backed benchmark task.
+    return [replace(config, task_provider="interactive") for config in selected_configs]
+
+
+def interactive(args: argparse.Namespace) -> int:
+    """
+    Run the interactive single-task workflow over selected config rows.
+
+    Args:
+        args, argparse.Namespace: parsed CLI arguments containing config, prompt, output_dir, and verbose.
+
+    Returns:
+        exit_code, int, 0 or 1: process-style status code.
+    """
+    task_text = read_interactive_task_text(args)
+    if not task_text:
+        print("ERROR: interactive mode needs a non-empty task. Use stdin, --prompt, or --prompt-file.")
+        return 1
+    try:
+        experiments = load_interactive_experiments(args)
+    except ValueError as exc:
+        print(f"ERROR: {exc}")
+        return 1
+
+    task = BenchmarkTask(task_id="interactive", source="interactive", prompt=task_text)
+    output_dir = Path(args.output_dir) / datetime.now().strftime("interactive_%Y%m%d_%H%M%S")
+    writer = ResultsWriter(output_dir)
+    warmed_models: set[str] = set()
+    total_runs = 0
+
+    for experiment in experiments:
+        for repetition in range(1, experiment.repetitions + 1):
+            total_runs += 1
+            print(
+                f"[{total_runs}] interactive experiment={experiment.experiment_id} "
+                f"rep={repetition}/{experiment.repetitions}"
+            )
+            prepare_load_mode(experiment, warmed_models)
+            result = run_agentic_loop(task, experiment, repetition=repetition, verbose=args.verbose)
+            writer.write_result(result)
+            print_interactive_summary(result)
+            print(f"\nFinaler Code gespeichert in:\n{result.final_code_file}")
+            print(f"Historie gespeichert in:\n{result.history_file}\n")
+
+    print(f"\nInteractive runs completed: {total_runs}")
+    print(f"Summary CSV:\n{writer.summary_path}")
+    print(f"Agent Calls CSV:\n{writer.agent_calls_path}")
+    print(f"Artifacts directory:\n{writer.artifacts_dir}")
+    return 0
+
+
+def validate_config(args: argparse.Namespace) -> int:
+    """
+    Validate an experiment configuration CSV from the CLI.
+
+    Args:
+        args, argparse.Namespace: parsed CLI arguments containing config path.
+
+    Returns:
+        exit_code, int, 0 or 1: 0 when the config is valid, otherwise 1.
+    """
+    configs = load_experiment_configs(args.config)
+    errors = validate_experiment_configs(configs)
+    if errors:
+        for error in errors:
+            print(f"ERROR: {error}")
+        return 1
+    print(f"OK: {len(configs)} experiment configuration(s) loaded from {args.config}")
+    return 0
+
+
+def list_tasks(args: argparse.Namespace) -> int:
+    """
+    Print task identifiers from a supported task provider file.
+
+    Args:
+        args, argparse.Namespace: parsed CLI arguments containing provider, tasks, limit, and task_id.
+
+    Returns:
+        exit_code, int, 0: list operation completed.
+    """
+    tasks = load_tasks(args.provider, args.tasks, limit=args.limit, task_id=args.task_id)
+    for task in tasks:
+        print(f"{task.source}\t{task.task_id}\t{task.entry_point or ''}")
+    print(f"Total: {len(tasks)}")
+    return 0
+
+
+def prepare_load_mode(config: ExperimentConfig, warmed: set[str]) -> None:
+    """
+    Apply warm or cold model-loading semantics for one benchmark run.
+
+    Args:
+        config, ExperimentConfig: experiment whose Coder/Reviewer models should be prepared.
+        warmed, set[str]: mutable cache of models already warmed for this process.
+
+    Returns:
+        None.
+    """
+    agents = [config.coder] + ([config.reviewer] if config.reviewer else [])
+    if config.load_mode == "warm":
+        for agent in agents:
+            key = f"{config.experiment_id}:{agent.role}:{agent.model}"
+            if key not in warmed:
+                print(f"Warming {agent.role} model for {config.experiment_id}: {agent.model}")
+                result = warm_agent(agent)
+                if result.failed:
+                    print(f"WARNING: warm-up failed for {agent.role} model {agent.model}: {result.error_message}")
+                warmed.add(key)
+    elif config.load_mode == "cold":
+        for agent in agents:
+            print(f"Unloading {agent.role} model for cold run: {agent.model}")
+            result = unload_agent(agent)
+            if result.failed:
+                print(f"WARNING: unload failed for {agent.role} model {agent.model}: {result.error_message}")
+
+
+def resolve_pdf_output_path(output_dir: Path, pdf_output: str | None) -> Path:
+    """
+    Resolve the PDF report output path for run --pdf-report.
+
+    Args:
+        output_dir, Path: timestamped benchmark output directory.
+        pdf_output, str | None: optional user-provided PDF path or directory.
+
+    Returns:
+        output_path, Path: concrete PDF file path.
+    """
+    if not pdf_output:
+        return output_dir / "overview.pdf"
+    output_path = Path(pdf_output)
+    if output_path.exists() and output_path.is_dir():
+        return output_path / "overview.pdf"
+    if output_path.suffix.lower() != ".pdf":
+        return output_path / "overview.pdf"
+    return output_path
+
+
+def infer_agent_calls_path(summary_path: Path, explicit_agent_calls: str | None = None) -> Path | None:
+    """
+    Resolve the optional agent_calls.csv path for PDF token aggregation.
+
+    Args:
+        summary_path, Path: summary.csv path supplied to the report command.
+        explicit_agent_calls, str | None: optional user-provided agent_calls.csv path.
+
+    Returns:
+        agent_calls_path, Path | None: existing agent calls path, or None when unavailable.
+    """
+    if explicit_agent_calls:
+        return Path(explicit_agent_calls)
+    candidate = summary_path.parent / "agent_calls.csv"
+    if summary_path.name != "agent_calls.csv" and candidate.exists():
+        return candidate
+    return None
+
+
+def generate_pdf_report_for_run(
+    summary_path: Path,
+    output_path: Path,
+    title: str,
+    agent_calls_path: Path | None = None,
+) -> int:
+    """
+    Generate an overview PDF and convert rendering errors into CLI status.
+
+    Args:
+        summary_path, Path: summary.csv produced by the benchmark run.
+        output_path, Path: target PDF path.
+        title, str: report title printed on each page.
+        agent_calls_path, Path | None: optional agent_calls.csv path for R/TCT/TRT token aggregation.
+
+    Returns:
+        exit_code, int, 0 or 1: 0 when the PDF was written, otherwise 1.
+    """
+    try:
+        written = generate_overview_pdf(summary_path, output_path, title=title, agent_calls_path=agent_calls_path)
+    except (OSError, ValueError) as exc:
+        print(f"ERROR: could not generate PDF report: {exc}")
+        return 1
+    print(f"Wrote PDF report: {written}")
+    return 0
+
+
+def run_benchmark(args: argparse.Namespace) -> int:
+    """
+    Run the benchmark matrix for all configured experiments and selected tasks.
+
+    Args:
+        args, argparse.Namespace: parsed CLI arguments for config, tasks, filters, output, and optional PDF reporting.
+
+    Returns:
+        exit_code, int, 0 or 1: 0 on successful benchmark completion, otherwise 1.
+    """
+    configs = load_experiment_configs(args.config)
+    errors = validate_experiment_configs(configs)
+    if errors:
+        for error in errors:
+            print(f"ERROR: {error}")
+        return 1
+
+    tasks_by_provider: dict[str, list[BenchmarkTask]] = {}
+    output_dir = Path(args.output_dir) / datetime.now().strftime("run_%Y%m%d_%H%M%S")
+    writer = ResultsWriter(output_dir)
+
+    if args.copy_config:
+        config_snapshot = output_dir / Path(args.config).name
+        config_snapshot.write_text(Path(args.config).read_text(encoding="utf-8"), encoding="utf-8")
+
+    total_runs = 0
+    warmed_models: set[str] = set()
+    for config in configs:
+        provider = config.task_provider
+        if provider not in tasks_by_provider:
+            tasks_by_provider[provider] = load_tasks(provider, args.tasks, limit=args.limit, task_id=args.task_id)
+        tasks = tasks_by_provider[provider]
+        for task in tasks:
+            for repetition in range(1, config.repetitions + 1):
+                total_runs += 1
+                print(
+                    f"[{total_runs}] experiment={config.experiment_id} task={task.task_id} "
+                    f"rep={repetition}/{config.repetitions}"
+                )
+                prepare_load_mode(config, warmed_models)
+                result = run_agentic_loop(task, config, repetition=repetition, verbose=args.verbose)
+                writer.write_result(result)
+                print(
+                    f"  stop={result.stop_reason} rounds={result.rounds_used} "
+                    f"syntax={result.final_syntax_ok} eval={result.evaluation.passed} "
+                    f"time={result.wallclock_total_s:.2f}s"
+                )
+
+    print(f"\nWrote summary: {writer.summary_path}")
+    print(f"Wrote agent calls: {writer.agent_calls_path}")
+    print(f"Wrote artifacts: {writer.artifacts_dir}")
+
+    if args.pdf_report:
+        pdf_output = resolve_pdf_output_path(output_dir, args.pdf_output)
+        return generate_pdf_report_for_run(writer.summary_path, pdf_output, args.pdf_title, writer.agent_calls_path)
+    return 0
+
+
+def report_pdf(args: argparse.Namespace) -> int:
+    """
+    Generate a PDF overview report from summary.csv.
+
+    Args:
+        args, argparse.Namespace: parsed CLI arguments containing summary, output, and title.
+
+    Returns:
+        exit_code, int, 0 or 1: 0 when the PDF was written, otherwise 1.
+    """
+    summary_path = Path(args.summary)
+    output_path = Path(args.output)
+    if output_path.is_dir():
+        output_path = output_path / "overview.pdf"
+    agent_calls_path = infer_agent_calls_path(summary_path, args.agent_calls)
+    return generate_pdf_report_for_run(summary_path, output_path, args.title, agent_calls_path)
+
+
+def write_sample_config(args: argparse.Namespace) -> int:
+    """
+    Write a starter experiment configuration CSV.
+
+    Args:
+        args, argparse.Namespace: parsed CLI arguments containing destination path.
+
+    Returns:
+        exit_code, int, 0: sample config was written.
+    """
+    path = Path(args.path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fields = [
+        "experiment_id",
+        "task_provider",
+        "coder_model",
+        "reviewer_model",
+        "coder_ctx",
+        "reviewer_ctx",
+        "coder_num_predict",
+        "reviewer_num_predict",
+        "coder_timeout_seconds",
+        "reviewer_timeout_seconds",
+        "coder_temperature",
+        "reviewer_temperature",
+        "max_rounds",
+        "max_same_code_rounds",
+        "feedback_mode",
+        "stop_policy",
+        "coder_prompt_template",
+        "reviewer_prompt_template",
+        "keep_alive",
+        "load_mode",
+        "repetitions",
+        "evaluator",
+    ]
+    rows = [
+        {
+            "experiment_id": "qwen_self_review",
+            "task_provider": "humaneval",
+            "coder_model": "qwen3-coder-next:latest",
+            "reviewer_model": "qwen3-coder-next:latest",
+            "coder_ctx": "32768",
+            "reviewer_ctx": "16384",
+            "coder_num_predict": "4096",
+            "reviewer_num_predict": "2048",
+            "coder_timeout_seconds": "600",
+            "reviewer_timeout_seconds": "600",
+            "coder_temperature": "0.1",
+            "reviewer_temperature": "0.0",
+            "max_rounds": "5",
+            "max_same_code_rounds": "2",
+            "feedback_mode": "compact_json",
+            "stop_policy": "reviewer_approved_and_syntax_ok",
+            "coder_prompt_template": "coder_default",
+            "reviewer_prompt_template": "reviewer_default",
+            "keep_alive": "10m",
+            "load_mode": "cold",
+            "repetitions": "1",
+            "evaluator": "syntax",
+        },
+        {
+            "experiment_id": "qwen_no_review",
+            "task_provider": "humaneval",
+            "coder_model": "qwen3-coder-next:latest",
+            "reviewer_model": "",
+            "coder_ctx": "32768",
+            "reviewer_ctx": "0",
+            "coder_num_predict": "4096",
+            "reviewer_num_predict": "0",
+            "coder_timeout_seconds": "600",
+            "reviewer_timeout_seconds": "600",
+            "coder_temperature": "0.1",
+            "reviewer_temperature": "0.0",
+            "max_rounds": "1",
+            "max_same_code_rounds": "1",
+            "feedback_mode": "none",
+            "stop_policy": "single_coder_round",
+            "coder_prompt_template": "coder_default",
+            "reviewer_prompt_template": "",
+            "keep_alive": "10m",
+            "load_mode": "cold",
+            "repetitions": "1",
+            "evaluator": "syntax",
+        },
+    ]
+    with path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows(rows)
+    print(f"Wrote sample config to {path}")
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """
+    Construct the command-line parser and all subcommands.
+
+    Args:
+        None.
+
+    Returns:
+        parser, argparse.ArgumentParser: parser for interactive, run, report, validation, task listing, and sample config commands.
+    """
+    parser = argparse.ArgumentParser(description="Agentic loop benchmark runner for local LLMs.")
+    subparsers = parser.add_subparsers(dest="command", required=False)
+
+    interactive_parser = subparsers.add_parser("interactive", help="Run the legacy single-task interactive loop.")
+    interactive_parser.add_argument("--config", default=DEFAULT_CONFIG, help="Experiment configuration CSV used to choose Coder/Reviewer settings.")
+    interactive_parser.add_argument("--experiment-id", help="Optional experiment row filter; defaults to all rows from --config.")
+    interactive_parser.add_argument("--output-dir", default="results")
+    interactive_parser.add_argument("--verbose", action="store_true")
+    interactive_parser.add_argument("--prompt", help="Task text for non-interactive single-task runs.")
+    interactive_parser.add_argument("--prompt-file", help="Path to a text file containing the interactive task.")
+    interactive_parser.set_defaults(func=interactive)
+
+    run_parser = subparsers.add_parser("run", help="Run a task-provider benchmark over all CSV configurations.")
+    run_parser.add_argument("--config", default=DEFAULT_CONFIG)
+    run_parser.add_argument("--provider", default="humaneval", help="Deprecated; provider is read from config rows.")
+    run_parser.add_argument("--tasks", required=True, help="Path to HumanEval JSONL(.gz) or CSV task file.")
+    run_parser.add_argument("--output-dir", default="results")
+    run_parser.add_argument("--limit", type=int)
+    run_parser.add_argument("--task-id")
+    run_parser.add_argument("--verbose", action="store_true")
+    run_parser.add_argument("--copy-config", action="store_true", default=True)
+    run_parser.add_argument("--no-copy-config", action="store_false", dest="copy_config")
+    run_parser.add_argument(
+        "--pdf-report",
+        action="store_true",
+        help="Generate overview.pdf from this run's summary.csv after the benchmark completes.",
+    )
+    run_parser.add_argument(
+        "--pdf-output",
+        help="Optional PDF path or directory for --pdf-report; defaults to the run output directory.",
+    )
+    run_parser.add_argument(
+        "--pdf-title",
+        default="Agentic Benchmark Report",
+        help="Title used for --pdf-report.",
+    )
+    run_parser.set_defaults(func=run_benchmark)
+
+    validate_parser = subparsers.add_parser("validate-config", help="Validate loop configuration CSV.")
+    validate_parser.add_argument("--config", default=DEFAULT_CONFIG)
+    validate_parser.set_defaults(func=validate_config)
+
+    list_parser = subparsers.add_parser("list-tasks", help="List tasks from a provider file.")
+    list_parser.add_argument("--provider", default="humaneval", choices=["humaneval", "csv"])
+    list_parser.add_argument("--tasks", required=True)
+    list_parser.add_argument("--limit", type=int)
+    list_parser.add_argument("--task-id")
+    list_parser.set_defaults(func=list_tasks)
+
+    pdf_parser = subparsers.add_parser("report-pdf", help="Generate an overview PDF from summary.csv.")
+    pdf_parser.add_argument("--summary", required=True, help="Path to summary.csv from a benchmark run.")
+    pdf_parser.add_argument("--output", required=True, help="Destination PDF path or existing output directory.")
+    pdf_parser.add_argument("--agent-calls", help="Optional agent_calls.csv path for Coder/Reviewer token columns; inferred next to summary.csv when present.")
+    pdf_parser.add_argument("--title", default="Agentic Benchmark Report")
+    pdf_parser.set_defaults(func=report_pdf)
+
+    sample_parser = subparsers.add_parser("write-sample-config", help="Write an example loop configuration CSV.")
+    sample_parser.add_argument("--path", default=DEFAULT_CONFIG)
+    sample_parser.set_defaults(func=write_sample_config)
+
+    return parser
+
+
+def normalize_argv_for_default_interactive(argv: list[str] | None) -> list[str] | None:
+    """
+    Prefix interactive arguments when no explicit subcommand was supplied.
+
+    Args:
+        argv, list[str] | None: optional argument vector; None means sys.argv should be inspected.
+
+    Returns:
+        normalized_argv, list[str] | None: argv suitable for argparse, preserving top-level help.
+    """
+    raw_args = list(sys.argv[1:] if argv is None else argv)
+    command_names = {"interactive", "run", "validate-config", "list-tasks", "report-pdf", "write-sample-config"}
+    if not raw_args:
+        return ["interactive"]
+    if raw_args[0] in command_names or raw_args[0] in {"-h", "--help"}:
+        return raw_args
+    return ["interactive", *raw_args]
+
+
+def main(argv: list[str] | None = None) -> int:
+    """
+    CLI entry point used by both module execution and the compatibility script.
+
+    Args:
+        argv, list[str] | None: optional argument vector; None reads from sys.argv.
+
+    Returns:
+        exit_code, int, 0 or 1: process-style status code returned by the selected command.
+    """
+    parser = build_parser()
+    args = parser.parse_args(normalize_argv_for_default_interactive(argv))
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
