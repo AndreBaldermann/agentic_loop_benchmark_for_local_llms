@@ -31,6 +31,10 @@ The benchmark writes a timestamped result directory containing:
 - `agent_calls.csv`: one row per concrete Coder or Reviewer model call
 - `artifacts/`: final generated code and per-run JSON history
 
+## CLI reference
+
+See [docs/cli.md](docs/cli.md) for the full command reference, option descriptions, examples, and the CLI help smoke-test command.
+
 ## Configuration CSV
 
 `configs/loop_configs.csv` defines Coder/Reviewer model pairs, context sizes, per-role timeouts, temperatures, max rounds, feedback mode, stop policy, load mode, repetitions, and evaluator.
