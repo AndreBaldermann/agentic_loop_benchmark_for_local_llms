@@ -15,6 +15,7 @@ class CliHelpTests(unittest.TestCase):
             "run",
             "validate-config",
             "list-tasks",
+            "report-pdf",
             "write-sample-config",
         ]:
             self.assertIn(command, help_text)
@@ -29,6 +30,16 @@ class CliHelpTests(unittest.TestCase):
             self.assertIn(option, help_text)
         self.assertEqual(cm.exception.code, 0)
 
+    def test_report_pdf_help_lists_core_options(self):
+        """Verify report-pdf --help exposes the required report options."""
+        parser = build_parser()
+        with contextlib.redirect_stdout(io.StringIO()) as stdout, self.assertRaises(SystemExit) as cm:
+            parser.parse_args(["report-pdf", "--help"])
+        help_text = stdout.getvalue()
+        for option in ["--summary", "--output", "--title"]:
+            self.assertIn(option, help_text)
+        self.assertEqual(cm.exception.code, 0)
+
     def test_known_commands_have_handlers(self):
         """Verify known subcommands are wired to callable handlers."""
         parser = build_parser()
@@ -36,6 +47,7 @@ class CliHelpTests(unittest.TestCase):
             ["interactive"],
             ["validate-config"],
             ["list-tasks", "--tasks", "tasks.jsonl"],
+            ["report-pdf", "--summary", "summary.csv", "--output", "overview.pdf"],
             ["write-sample-config"],
         ]
         for args in cases:

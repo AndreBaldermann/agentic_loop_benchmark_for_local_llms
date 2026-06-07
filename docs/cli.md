@@ -96,6 +96,32 @@ Options:
 | `--limit` | none | Print only the first N tasks. |
 | `--task-id` | none | Print only the task with this exact ID. |
 
+### `report-pdf`
+
+Generate a first overview PDF from a benchmark `summary.csv`. Rows are `task_id`, columns are `experiment_id`, and each cell shows `rounds_used / max_rounds`.
+
+```bash
+python3 -m agentic_benchmark.cli report-pdf \
+  --summary results/run_20260607_120000/summary.csv \
+  --output reports/run_20260607_120000/overview.pdf
+```
+
+Options:
+
+| Option | Default | Meaning |
+|---|---:|---|
+| `--summary` | required | Path to `summary.csv` from a benchmark run. |
+| `--output` | required | Destination PDF path, or an existing directory where `overview.pdf` is written. |
+| `--title` | `Agentic Benchmark Report` | Title printed on the PDF pages. |
+
+Color rules:
+
+- `rounds_used = 1`: green.
+- Intermediate `rounds_used`: interpolated between green and red.
+- `rounds_used = max_rounds`: red, unless overridden by a stop reason below.
+- `stagnation_detected`: gray.
+- `max_rounds_reached`: blue.
+
 ### `write-sample-config`
 
 Write an example experiment configuration CSV.

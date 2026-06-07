@@ -31,6 +31,14 @@ The benchmark writes a timestamped result directory containing:
 - `agent_calls.csv`: one row per concrete Coder or Reviewer model call
 - `artifacts/`: final generated code and per-run JSON history
 
+### Generate overview PDF
+
+```bash
+python3 -m agentic_benchmark.cli report-pdf \
+  --summary results/run_YYYYMMDD_HHMMSS/summary.csv \
+  --output reports/overview.pdf
+```
+
 ## CLI reference
 
 See [docs/cli.md](docs/cli.md) for the full command reference, option descriptions, examples, and the CLI help smoke-test command.

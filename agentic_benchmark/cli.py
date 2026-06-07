@@ -9,6 +9,7 @@ from .config_loader import load_experiment_configs, validate_experiment_configs
 from .loop_runner import print_interactive_summary, run_agentic_loop
 from .ollama_client import unload_agent, warm_agent
 from .metrics import ResultsWriter
+from .reporting.pdf import generate_overview_pdf
 from .models import AgentConfig, BenchmarkTask, ExperimentConfig
 from .task_providers import load_tasks
 
@@ -197,6 +198,29 @@ def run_benchmark(args: argparse.Namespace) -> int:
     return 0
 
 
+def report_pdf(args: argparse.Namespace) -> int:
+    """
+    Generate a PDF overview report from summary.csv.
+
+    Args:
+        args, argparse.Namespace: parsed CLI arguments containing summary, output, and title.
+
+    Returns:
+        exit_code, int, 0 or 1: 0 when the PDF was written, otherwise 1.
+    """
+    summary_path = Path(args.summary)
+    output_path = Path(args.output)
+    if output_path.is_dir():
+        output_path = output_path / "overview.pdf"
+    try:
+        written = generate_overview_pdf(summary_path, output_path, title=args.title)
+    except (OSError, ValueError) as exc:
+        print(f"ERROR: could not generate PDF report: {exc}")
+        return 1
+    print(f"Wrote PDF report: {written}")
+    return 0
+
+
 def write_sample_config(args: argparse.Namespace) -> int:
     """
     Write a starter experiment configuration CSV.
@@ -299,7 +323,7 @@ def build_parser() -> argparse.ArgumentParser:
         None.
 
     Returns:
-        parser, argparse.ArgumentParser: parser for interactive, run, validation, task listing, and sample config commands.
+        parser, argparse.ArgumentParser: parser for interactive, run, report, validation, task listing, and sample config commands.
     """
     parser = argparse.ArgumentParser(description="Agentic loop benchmark runner for local LLMs.")
     subparsers = parser.add_subparsers(dest="command", required=False)
@@ -331,6 +355,12 @@ def build_parser() -> argparse.ArgumentParser:
     list_parser.add_argument("--limit", type=int)
     list_parser.add_argument("--task-id")
     list_parser.set_defaults(func=list_tasks)
+
+    pdf_parser = subparsers.add_parser("report-pdf", help="Generate an overview PDF from summary.csv.")
+    pdf_parser.add_argument("--summary", required=True, help="Path to summary.csv from a benchmark run.")
+    pdf_parser.add_argument("--output", required=True, help="Destination PDF path or existing output directory.")
+    pdf_parser.add_argument("--title", default="Agentic Benchmark Report")
+    pdf_parser.set_defaults(func=report_pdf)
 
     sample_parser = subparsers.add_parser("write-sample-config", help="Write an example loop configuration CSV.")
     sample_parser.add_argument("--path", default=DEFAULT_CONFIG)
