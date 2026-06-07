@@ -15,6 +15,7 @@ class AgentConfig:
     num_predict: int
     json_mode: bool = False
     keep_alive: str = "10m"
+    timeout_seconds: int = 600
 
 
 @dataclass(frozen=True)
@@ -69,13 +70,20 @@ class ModelCallResult:
     prompt_eval_duration_s: float = 0.0
     eval_count: int = 0
     eval_duration_s: float = 0.0
+    failed: bool = False
+    error_type: str | None = None
+    error_message: str | None = None
 
     @property
     def prompt_tokens(self) -> int:
+        if self.failed:
+            return 0
         return self.prompt_eval_count or self.prompt_estimated_tokens
 
     @property
     def output_tokens(self) -> int:
+        if self.failed:
+            return 0
         return self.eval_count
 
     @property
@@ -137,6 +145,9 @@ class AgentCallRecord:
     critical_issues_count: int | None = None
     suggestions_count: int | None = None
     stop_reason_if_any: str | None = None
+    call_failed: bool = False
+    error_type: str | None = None
+    error_message: str | None = None
 
 
 @dataclass

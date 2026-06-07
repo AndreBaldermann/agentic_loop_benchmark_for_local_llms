@@ -37,6 +37,7 @@ def load_experiment_configs(path: str | Path) -> list[ExperimentConfig]:
                 num_predict=_int(row, "coder_num_predict", 4096),
                 json_mode=False,
                 keep_alive=keep_alive,
+                timeout_seconds=_int(row, "coder_timeout_seconds", 600),
             )
             reviewer_model = (row.get("reviewer_model") or "").strip()
             reviewer = None
@@ -49,6 +50,7 @@ def load_experiment_configs(path: str | Path) -> list[ExperimentConfig]:
                     num_predict=_int(row, "reviewer_num_predict", 2048),
                     json_mode=True,
                     keep_alive=keep_alive,
+                    timeout_seconds=_int(row, "reviewer_timeout_seconds", 600),
                 )
             configs.append(
                 ExperimentConfig(
@@ -92,6 +94,10 @@ def validate_experiment_configs(configs: list[ExperimentConfig]) -> list[str]:
             errors.append(f"{config.experiment_id}: max_rounds must be >= 1")
         if config.repetitions < 1:
             errors.append(f"{config.experiment_id}: repetitions must be >= 1")
+        if config.coder.timeout_seconds < 1:
+            errors.append(f"{config.experiment_id}: coder_timeout_seconds must be >= 1")
+        if config.reviewer and config.reviewer.timeout_seconds < 1:
+            errors.append(f"{config.experiment_id}: reviewer_timeout_seconds must be >= 1")
         if config.feedback_mode not in valid_feedback:
             errors.append(f"{config.experiment_id}: unsupported feedback_mode {config.feedback_mode}")
         if config.stop_policy not in valid_stop:

@@ -73,6 +73,9 @@ def make_call_record(
         critical_issues_count=critical_issues_count,
         suggestions_count=suggestions_count,
         stop_reason_if_any=stop_reason_if_any,
+        call_failed=result.failed,
+        error_type=result.error_type,
+        error_message=result.error_message,
     )
 
 
@@ -144,10 +147,17 @@ def run_agentic_loop(
             print_block(f"{run_id} RUNDE {round_no} - CODER PROMPT", coder_prompt)
         coder_result = run_agent(experiment.coder, coder_prompt)
         raw_code = coder_result.output
-        code = normalize_code(extract_python_code(raw_code))
+        if coder_result.failed:
+            code = ""
+            syntax_ok = False
+            syntax_error = coder_result.error_message or "Coder model call failed."
+            ast_ok = False
+            ast_error = syntax_error
+        else:
+            code = normalize_code(extract_python_code(raw_code))
+            syntax_ok, syntax_error = syntax_check(code)
+            ast_ok, ast_error = ast_check(code)
 
-        syntax_ok, syntax_error = syntax_check(code)
-        ast_ok, ast_error = ast_check(code)
         if not ast_ok and not syntax_error:
             syntax_ok = False
             syntax_error = ast_error
@@ -177,6 +187,28 @@ def run_agentic_loop(
         )
         agent_calls.append(coder_call_record)
 
+        if coder_result.failed:
+            stop_reason = "coder_model_call_failed"
+            history.append(
+                {
+                    "round": round_no,
+                    "coder_runtime": coder_result.wallclock_s,
+                    "reviewer_runtime": 0.0,
+                    "syntax_ok": syntax_ok,
+                    "syntax_error": syntax_error,
+                    "changed": changed,
+                    "score": None,
+                    "approved": None,
+                    "code": code,
+                    "review": None,
+                    "coder_raw_output": raw_code,
+                    "reviewer_raw_output": "",
+                    "coder_metrics": coder_result.__dict__,
+                    "reviewer_metrics": None,
+                }
+            )
+            break
+
         review = None
         reviewer_raw_output = ""
         reviewer_result = None
@@ -192,7 +224,15 @@ def run_agentic_loop(
                 print_block(f"{run_id} RUNDE {round_no} - REVIEWER PROMPT", review_prompt)
             reviewer_result = run_agent(experiment.reviewer, review_prompt)
             reviewer_raw_output = reviewer_result.output
-            review = parse_review(reviewer_result.output)
+            if reviewer_result.failed:
+                review = {
+                    "approved": False,
+                    "score": 0,
+                    "critical_issues": [reviewer_result.error_message or "Reviewer model call failed."],
+                    "suggestions": [],
+                }
+            else:
+                review = parse_review(reviewer_result.output)
             if not syntax_ok:
                 review["approved"] = False
                 review["score"] = min(review.get("score", 0), 20)
@@ -236,13 +276,16 @@ def run_agentic_loop(
             }
         )
 
-        stop = should_stop(
-            experiment=experiment,
-            round_no=round_no,
-            syntax_ok=syntax_ok,
-            review=review,
-            same_code_count=same_code_count,
-        )
+        if reviewer_result and reviewer_result.failed:
+            stop = "reviewer_model_call_failed"
+        else:
+            stop = should_stop(
+                experiment=experiment,
+                round_no=round_no,
+                syntax_ok=syntax_ok,
+                review=review,
+                same_code_count=same_code_count,
+            )
         if stop:
             stop_reason = stop
             break

@@ -85,12 +85,16 @@ def prepare_load_mode(config: ExperimentConfig, warmed: set[str]) -> None:
             key = f"{config.experiment_id}:{agent.role}:{agent.model}"
             if key not in warmed:
                 print(f"Warming {agent.role} model for {config.experiment_id}: {agent.model}")
-                warm_agent(agent)
+                result = warm_agent(agent)
+                if result.failed:
+                    print(f"WARNING: warm-up failed for {agent.role} model {agent.model}: {result.error_message}")
                 warmed.add(key)
     elif config.load_mode == "cold":
         for agent in agents:
             print(f"Unloading {agent.role} model for cold run: {agent.model}")
-            unload_agent(agent)
+            result = unload_agent(agent)
+            if result.failed:
+                print(f"WARNING: unload failed for {agent.role} model {agent.model}: {result.error_message}")
 
 
 def run_benchmark(args: argparse.Namespace) -> int:
@@ -150,6 +154,8 @@ def write_sample_config(args: argparse.Namespace) -> int:
         "reviewer_ctx",
         "coder_num_predict",
         "reviewer_num_predict",
+        "coder_timeout_seconds",
+        "reviewer_timeout_seconds",
         "coder_temperature",
         "reviewer_temperature",
         "max_rounds",
@@ -173,6 +179,8 @@ def write_sample_config(args: argparse.Namespace) -> int:
             "reviewer_ctx": "16384",
             "coder_num_predict": "4096",
             "reviewer_num_predict": "2048",
+            "coder_timeout_seconds": "600",
+            "reviewer_timeout_seconds": "600",
             "coder_temperature": "0.1",
             "reviewer_temperature": "0.0",
             "max_rounds": "5",
@@ -182,7 +190,7 @@ def write_sample_config(args: argparse.Namespace) -> int:
             "coder_prompt_template": "coder_default",
             "reviewer_prompt_template": "reviewer_default",
             "keep_alive": "10m",
-            "load_mode": "as_is",
+            "load_mode": "cold",
             "repetitions": "1",
             "evaluator": "syntax",
         },
@@ -195,6 +203,8 @@ def write_sample_config(args: argparse.Namespace) -> int:
             "reviewer_ctx": "0",
             "coder_num_predict": "4096",
             "reviewer_num_predict": "0",
+            "coder_timeout_seconds": "600",
+            "reviewer_timeout_seconds": "600",
             "coder_temperature": "0.1",
             "reviewer_temperature": "0.0",
             "max_rounds": "1",
@@ -204,7 +214,7 @@ def write_sample_config(args: argparse.Namespace) -> int:
             "coder_prompt_template": "coder_default",
             "reviewer_prompt_template": "",
             "keep_alive": "10m",
-            "load_mode": "as_is",
+            "load_mode": "cold",
             "repetitions": "1",
             "evaluator": "syntax",
         },

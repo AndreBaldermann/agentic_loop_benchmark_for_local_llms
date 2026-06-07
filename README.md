@@ -33,7 +33,7 @@ The benchmark writes a timestamped result directory containing:
 
 ## Configuration CSV
 
-`configs/loop_configs.csv` defines Coder/Reviewer model pairs, context sizes, temperatures, max rounds, feedback mode, stop policy, load mode, repetitions, and evaluator.
+`configs/loop_configs.csv` defines Coder/Reviewer model pairs, context sizes, per-role timeouts, temperatures, max rounds, feedback mode, stop policy, load mode, repetitions, and evaluator.
 
 Reviewer models are optional, so Coder-only loops can be compared against Coder/Reviewer loops.
 
@@ -44,3 +44,10 @@ The benchmark focuses on agentic-loop behavior, timing, tokens, and interaction 
 - `none`: do not evaluate generated code
 - `syntax`: run a local Python syntax check
 - `humaneval`: run HumanEval tests in a subprocess with timeout
+
+
+## Failure handling and fair loading
+
+For fair per-task comparisons the sample config uses `load_mode=cold`, which unloads Coder and Reviewer models before each task/repetition. Within a task, the loop can still run multiple Coder/Reviewer iterations using the configured context windows.
+
+Model call failures, including Ollama URL errors, invalid JSON, backend errors, and timeouts, are recorded as failed agent calls instead of aborting the whole benchmark. Failed calls get zero backend token counts and zero backend execution/load durations, plus `call_failed`, `error_type`, and `error_message` fields in `agent_calls.csv`.

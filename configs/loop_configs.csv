@@ -1,3 +1,3 @@
-experiment_id,task_provider,coder_model,reviewer_model,coder_ctx,reviewer_ctx,coder_num_predict,reviewer_num_predict,coder_temperature,reviewer_temperature,max_rounds,max_same_code_rounds,feedback_mode,stop_policy,coder_prompt_template,reviewer_prompt_template,keep_alive,load_mode,repetitions,evaluator
-qwen_self_review,humaneval,qwen3-coder-next:latest,qwen3-coder-next:latest,32768,16384,4096,2048,0.1,0.0,5,2,compact_json,reviewer_approved_and_syntax_ok,coder_default,reviewer_default,10m,as_is,1,syntax
-qwen_no_review,humaneval,qwen3-coder-next:latest,,32768,0,4096,0,0.1,0.0,1,1,none,single_coder_round,coder_default,,10m,as_is,1,syntax
+experiment_id,task_provider,coder_model,reviewer_model,coder_ctx,reviewer_ctx,coder_num_predict,reviewer_num_predict,coder_timeout_seconds,reviewer_timeout_seconds,coder_temperature,reviewer_temperature,max_rounds,max_same_code_rounds,feedback_mode,stop_policy,coder_prompt_template,reviewer_prompt_template,keep_alive,load_mode,repetitions,evaluator
+qwen_self_review,humaneval,qwen3-coder-next:latest,qwen3-coder-next:latest,32768,16384,4096,2048,600,600,0.1,0.0,5,2,compact_json,reviewer_approved_and_syntax_ok,coder_default,reviewer_default,10m,cold,1,syntax
+qwen_no_review,humaneval,qwen3-coder-next:latest,,32768,0,4096,0,600,600,0.1,0.0,1,1,none,single_coder_round,coder_default,,10m,cold,1,syntax
