@@ -7,6 +7,19 @@ from .models import AgentConfig, ExperimentConfig
 
 
 def _required(row: dict[str, str], key: str) -> str:
+    """
+    Read a required CSV field.
+
+    Args:
+        row, dict[str, str]: CSV row.
+        key, str: field name that must be present and non-empty.
+
+    Returns:
+        value, str: stripped field value.
+
+    Raises:
+        ValueError: when the field is missing or empty.
+    """
     value = (row.get(key) or "").strip()
     if not value:
         raise ValueError(f"Missing required config value: {key}")
@@ -14,16 +27,47 @@ def _required(row: dict[str, str], key: str) -> str:
 
 
 def _int(row: dict[str, str], key: str, default: int = 0) -> int:
+    """
+    Read an integer CSV field with a default.
+
+    Args:
+        row, dict[str, str]: CSV row.
+        key, str: field name to parse.
+        default, int: fallback when the field is empty.
+
+    Returns:
+        value, int: parsed field or default.
+    """
     value = (row.get(key) or "").strip()
     return int(value) if value else default
 
 
 def _float(row: dict[str, str], key: str, default: float = 0.0) -> float:
+    """
+    Read a float CSV field with a default.
+
+    Args:
+        row, dict[str, str]: CSV row.
+        key, str: field name to parse.
+        default, float: fallback when the field is empty.
+
+    Returns:
+        value, float: parsed field or default.
+    """
     value = (row.get(key) or "").strip()
     return float(value) if value else default
 
 
 def load_experiment_configs(path: str | Path) -> list[ExperimentConfig]:
+    """
+    Load experiment configurations from CSV.
+
+    Args:
+        path, str | Path: config CSV path.
+
+    Returns:
+        configs, list[ExperimentConfig]: parsed experiment rows preserving CSV order.
+    """
     configs: list[ExperimentConfig] = []
     with Path(path).open("r", encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
@@ -73,6 +117,15 @@ def load_experiment_configs(path: str | Path) -> list[ExperimentConfig]:
 
 
 def validate_experiment_configs(configs: list[ExperimentConfig]) -> list[str]:
+    """
+    Validate loaded experiment configurations.
+
+    Args:
+        configs, list[ExperimentConfig]: configurations to check.
+
+    Returns:
+        errors, list[str]: human-readable validation errors; empty when valid.
+    """
     errors: list[str] = []
     ids: set[str] = set()
     valid_feedback = {"none", "compact_json", "full_json", "critical_only", "suggestions_only"}

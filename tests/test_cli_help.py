@@ -6,7 +6,9 @@ from agentic_benchmark.cli import build_parser
 
 
 class CliHelpTests(unittest.TestCase):
+    """Smoke tests that keep CLI documentation aligned with argparse."""
     def test_top_level_help_lists_commands(self):
+        """Verify top-level help lists every public subcommand."""
         help_text = build_parser().format_help()
         for command in [
             "interactive",
@@ -18,6 +20,7 @@ class CliHelpTests(unittest.TestCase):
             self.assertIn(command, help_text)
 
     def test_run_help_lists_core_options(self):
+        """Verify run --help exposes the primary benchmark options."""
         parser = build_parser()
         with contextlib.redirect_stdout(io.StringIO()) as stdout, self.assertRaises(SystemExit) as cm:
             parser.parse_args(["run", "--help"])
@@ -27,6 +30,7 @@ class CliHelpTests(unittest.TestCase):
         self.assertEqual(cm.exception.code, 0)
 
     def test_known_commands_have_handlers(self):
+        """Verify known subcommands are wired to callable handlers."""
         parser = build_parser()
         cases = [
             ["interactive"],

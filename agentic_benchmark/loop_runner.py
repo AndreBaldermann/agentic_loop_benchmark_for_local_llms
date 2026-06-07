@@ -13,10 +13,29 @@ from .review_parser import parse_review
 
 
 def make_run_id() -> str:
+    """
+    Create a unique UTC timestamp-based run identifier.
+
+    Args:
+        None.
+
+    Returns:
+        run_id, str: sortable identifier including date, time, and microseconds.
+    """
     return datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
 
 
 def print_block(title: str, text: str) -> None:
+    """
+    Print a titled debug block for verbose prompt inspection.
+
+    Args:
+        title, str: block title.
+        text, str: block contents.
+
+    Returns:
+        None.
+    """
     print("\n" + "=" * 100)
     print(title)
     print("=" * 100)
@@ -41,6 +60,21 @@ def make_call_record(
     suggestions_count: int | None = None,
     stop_reason_if_any: str | None = None,
 ) -> AgentCallRecord:
+    """
+    Convert one model call result into a CSV-ready agent call record.
+
+    Args:
+        run_id, str: unique run identifier.
+        experiment, ExperimentConfig: active experiment settings.
+        task, BenchmarkTask: active task.
+        repetition, int, >= 1: repetition index.
+        round_no, int, >= 1: loop round index.
+        prompt, str: prompt sent to the model.
+        result, ModelCallResult: normalized backend response.
+
+    Returns:
+        record, AgentCallRecord: flattened per-call telemetry.
+    """
     return AgentCallRecord(
         run_id=run_id,
         experiment_id=experiment.experiment_id,
@@ -87,6 +121,19 @@ def should_stop(
     review: dict | None,
     same_code_count: int,
 ) -> str | None:
+    """
+    Evaluate stop conditions after one loop round.
+
+    Args:
+        experiment, ExperimentConfig: stop-policy and max-round settings.
+        round_no, int, >= 1: current loop round.
+        syntax_ok, bool: latest local syntax result.
+        review, dict | None: latest Reviewer result.
+        same_code_count, int, >= 0: consecutive unchanged-code counter.
+
+    Returns:
+        stop_reason, str | None: reason to stop, or None to continue.
+    """
     approved = bool(review and review.get("approved"))
     if experiment.stop_policy == "fixed_rounds":
         return "fixed_rounds_complete" if round_no >= experiment.max_rounds else None
@@ -115,6 +162,25 @@ def run_agentic_loop(
     repetition: int = 1,
     verbose: bool = False,
 ) -> LoopRunResult:
+    """
+    Execute the iterative Coder/Reviewer workflow for one task.
+
+    Flow:
+        1. Coder generates or revises a candidate solution.
+        2. Local syntax and AST checks validate the candidate.
+        3. Reviewer optionally evaluates the candidate and emits feedback.
+        4. Feedback is returned to the next Coder round.
+        5. Repeat until stop condition, failure, stagnation, or max_rounds.
+
+    Args:
+        task, BenchmarkTask: task to solve.
+        experiment, ExperimentConfig: agent, loop, feedback, and evaluator settings.
+        repetition, int, >= 1: repetition index for repeated benchmark runs.
+        verbose, bool: whether to print prompts and debug blocks.
+
+    Returns:
+        result, LoopRunResult: final code, review, evaluation, metrics, and call history.
+    """
     run_id = make_run_id()
     timestamp = datetime.now(timezone.utc).isoformat()
     history: list[dict] = []
@@ -129,8 +195,14 @@ def run_agentic_loop(
     final_syntax_error = "Noch kein Code vorhanden."
     start = time.time()
 
+    # Invariant: round_no is 1-based so CSV rows match human-readable
+    # benchmark logs and can be compared directly with max_rounds.
     for round_no in range(1, experiment.max_rounds + 1):
         previous_code = code
+
+        # --------------------------------------------------
+        # Generate candidate solution
+        # --------------------------------------------------
         prev_syntax_ok, prev_syntax_error = syntax_check(code) if code else (
             False,
             "Noch kein Code vorhanden.",
@@ -147,6 +219,9 @@ def run_agentic_loop(
             print_block(f"{run_id} RUNDE {round_no} - CODER PROMPT", coder_prompt)
         coder_result = run_agent(experiment.coder, coder_prompt)
         raw_code = coder_result.output
+
+        # Failed model calls are benchmark data, not process errors.
+        # They get zero backend metrics and stop only this task run.
         if coder_result.failed:
             code = ""
             syntax_ok = False
@@ -164,6 +239,8 @@ def run_agentic_loop(
         final_syntax_ok = syntax_ok
         final_syntax_error = syntax_error
 
+        # Code stagnation is measured after normalization so trailing
+        # whitespace or line-ending differences do not count as progress.
         changed = normalize_code(previous_code) != normalize_code(code)
         if changed:
             code_changed_rounds += 1
@@ -188,6 +265,8 @@ def run_agentic_loop(
         agent_calls.append(coder_call_record)
 
         if coder_result.failed:
+            # Stop immediately because Reviewer feedback would be meaningless
+            # without a candidate solution to inspect.
             stop_reason = "coder_model_call_failed"
             history.append(
                 {
@@ -209,6 +288,9 @@ def run_agentic_loop(
             )
             break
 
+        # --------------------------------------------------
+        # Review generated solution
+        # --------------------------------------------------
         review = None
         reviewer_raw_output = ""
         reviewer_result = None
@@ -225,6 +307,8 @@ def run_agentic_loop(
             reviewer_result = run_agent(experiment.reviewer, review_prompt)
             reviewer_raw_output = reviewer_result.output
             if reviewer_result.failed:
+                # Preserve a review-shaped object so downstream history,
+                # CSV aggregation, and feedback code can stay schema-stable.
                 review = {
                     "approved": False,
                     "score": 0,
@@ -234,6 +318,8 @@ def run_agentic_loop(
             else:
                 review = parse_review(reviewer_result.output)
             if not syntax_ok:
+                # Local syntax validation is an invariant stronger than model
+                # opinion: syntactically invalid code can never be approved.
                 review["approved"] = False
                 review["score"] = min(review.get("score", 0), 20)
                 if syntax_error and syntax_error not in review["critical_issues"]:
@@ -257,6 +343,9 @@ def run_agentic_loop(
         else:
             last_review = review
 
+        # --------------------------------------------------
+        # Persist round history
+        # --------------------------------------------------
         history.append(
             {
                 "round": round_no,
@@ -276,6 +365,9 @@ def run_agentic_loop(
             }
         )
 
+        # --------------------------------------------------
+        # Decide whether this task run should continue
+        # --------------------------------------------------
         if reviewer_result and reviewer_result.failed:
             stop = "reviewer_model_call_failed"
         else:
@@ -290,6 +382,9 @@ def run_agentic_loop(
             stop_reason = stop
             break
 
+    # --------------------------------------------------
+    # Evaluate final artifact and return aggregate result
+    # --------------------------------------------------
     evaluation = evaluate(task, code, experiment.evaluator)
     wallclock_total_s = time.time() - start
     stagnation_detected = stop_reason == "stagnation_detected"
@@ -322,6 +417,15 @@ def run_agentic_loop(
 
 
 def print_interactive_summary(result: LoopRunResult) -> None:
+    """
+    Print a human-readable summary for one interactive run.
+
+    Args:
+        result, LoopRunResult: completed interactive run.
+
+    Returns:
+        None.
+    """
     print("\n" + "#" * 100)
     print("AGENTENSITZUNG BEENDET")
     print("#" * 100)

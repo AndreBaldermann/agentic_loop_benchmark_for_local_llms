@@ -58,10 +58,30 @@ AGENT_CALL_FIELDS = list(AgentCallRecord.__dataclass_fields__.keys())
 
 
 def _sum_calls(calls: list[AgentCallRecord], role: str | None, attr: str) -> float:
+    """
+    Sum one numeric AgentCallRecord field across optional role filters.
+
+    Args:
+        calls, list[AgentCallRecord]: recorded Coder/Reviewer calls.
+        role, str | None: role to include, or None for all roles.
+        attr, str: numeric field name to sum.
+
+    Returns:
+        total, float: sum of matching call values.
+    """
     return sum(float(getattr(call, attr) or 0) for call in calls if role is None or call.agent_role == role)
 
 
 def summary_row(result: LoopRunResult) -> dict[str, Any]:
+    """
+    Convert a loop result into one summary CSV row.
+
+    Args:
+        result, LoopRunResult: completed task/config/repetition result.
+
+    Returns:
+        row, dict[str, Any]: CSV-ready aggregate metrics and artifact paths.
+    """
     review = result.final_review or {}
     critical_total = 0
     suggestions_total = 0
@@ -119,7 +139,20 @@ def summary_row(result: LoopRunResult) -> dict[str, Any]:
 
 
 class ResultsWriter:
+    """
+    Writes benchmark results to CSV files and artifact files.
+
+    The writer owns one timestamped output directory. It appends summary rows,
+    appends per-agent-call rows, and stores larger generated-code/history
+    artifacts outside the CSV files.
+    """
     def __init__(self, output_dir: str | Path):
+        """
+        Create output directories and initialize CSV paths.
+
+        Args:
+            output_dir, str | Path: benchmark run directory to create or reuse.
+        """
         self.output_dir = Path(output_dir)
         self.artifacts_dir = self.output_dir / "artifacts"
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -130,6 +163,18 @@ class ResultsWriter:
         self._agent_calls_initialized = False
 
     def _append_row(self, path: Path, fields: list[str], row: dict[str, Any], initialized_attr: str) -> None:
+        """
+        Append one CSV row and write a header only once.
+
+        Args:
+            path, Path: CSV file path.
+            fields, list[str]: stable column order.
+            row, dict[str, Any]: values to write.
+            initialized_attr, str: attribute tracking whether this writer wrote a header.
+
+        Returns:
+            None.
+        """
         initialized = getattr(self, initialized_attr)
         file_exists = path.exists() and path.stat().st_size > 0
         with path.open("a", encoding="utf-8", newline="") as f:
@@ -140,6 +185,15 @@ class ResultsWriter:
         setattr(self, initialized_attr, True)
 
     def persist_artifacts(self, result: LoopRunResult) -> LoopRunResult:
+        """
+        Write final code and JSON history artifacts for one run.
+
+        Args:
+            result, LoopRunResult: result whose large artifacts should be persisted.
+
+        Returns:
+            result, LoopRunResult: same object with final_code_file and history_file populated.
+        """
         safe_task_id = result.task.task_id.replace("/", "_").replace(" ", "_")
         prefix = f"{result.run_id}__{result.experiment.experiment_id}__{safe_task_id}__rep{result.repetition}"
         code_path = self.artifacts_dir / f"{prefix}.py"
@@ -151,6 +205,15 @@ class ResultsWriter:
         return result
 
     def write_result(self, result: LoopRunResult) -> None:
+        """
+        Persist artifacts and append CSV rows for one completed run.
+
+        Args:
+            result, LoopRunResult: completed task/config/repetition run.
+
+        Returns:
+            None.
+        """
         result = self.persist_artifacts(result)
         self._append_row(self.summary_path, SUMMARY_FIELDS, summary_row(result), "_summary_initialized")
         for call in result.agent_calls:

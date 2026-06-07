@@ -11,6 +11,15 @@ MAX_FEEDBACK_CHARS = 4000
 
 
 def find_json_objects(text: str) -> list[str]:
+    """
+    Find balanced top-level JSON object substrings in text.
+
+    Args:
+        text, str: reviewer output that may contain prose and JSON.
+
+    Returns:
+        objects, list[str]: candidate JSON object strings in encounter order.
+    """
     objects = []
     stack = []
     start = None
@@ -46,6 +55,15 @@ def find_json_objects(text: str) -> list[str]:
 
 
 def extract_review_json(text: str) -> dict[str, Any] | None:
+    """
+    Extract the reviewer JSON object from raw model output.
+
+    Args:
+        text, str: raw reviewer response.
+
+    Returns:
+        data, dict[str, Any] | None: parsed JSON object containing approved, or None when absent.
+    """
     text = strip_ansi(text).strip()
 
     fenced = re.findall(
@@ -69,6 +87,16 @@ def extract_review_json(text: str) -> dict[str, Any] | None:
 
 
 def clean_list(value: Any, max_items: int = MAX_FEEDBACK_ITEMS) -> list[str]:
+    """
+    Normalize reviewer list-like fields into bounded string lists.
+
+    Args:
+        value, Any: string, list, scalar, or None from parsed JSON.
+        max_items, int, >= 0: maximum number of items to keep.
+
+    Returns:
+        cleaned, list[str]: whitespace-normalized non-empty strings.
+    """
     if value is None:
         return []
 
@@ -90,6 +118,15 @@ def clean_list(value: Any, max_items: int = MAX_FEEDBACK_ITEMS) -> list[str]:
 
 
 def parse_review(text: str) -> dict[str, Any]:
+    """
+    Parse reviewer output into the internal review schema.
+
+    Args:
+        text, str: raw reviewer model response.
+
+    Returns:
+        review, dict[str, Any]: approved, score, critical_issues, and suggestions fields.
+    """
     data = extract_review_json(text)
 
     if data is None:
@@ -121,6 +158,16 @@ def parse_review(text: str) -> dict[str, Any]:
 
 
 def compact_feedback(review: dict[str, Any] | None, syntax_error: str | None) -> str:
+    """
+    Create compact feedback for the next Coder prompt.
+
+    Args:
+        review, dict[str, Any] | None: previous Reviewer result.
+        syntax_error, str | None: latest local syntax error.
+
+    Returns:
+        feedback, str: JSON-like feedback text bounded by MAX_FEEDBACK_CHARS.
+    """
     if not review and not syntax_error:
         return "Noch kein Reviewer-Feedback vorhanden."
 

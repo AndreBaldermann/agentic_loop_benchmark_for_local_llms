@@ -16,6 +16,15 @@ DEFAULT_CONFIG = "configs/loop_configs.csv"
 
 
 def build_default_experiment() -> ExperimentConfig:
+    """
+    Build the default interactive benchmark configuration.
+
+    Args:
+        None.
+
+    Returns:
+        experiment, ExperimentConfig: default Coder/Reviewer setup for interactive runs.
+    """
     coder = AgentConfig(
         role="Coder",
         model="qwen3-coder-next:latest",
@@ -45,6 +54,15 @@ def build_default_experiment() -> ExperimentConfig:
 
 
 def interactive(args: argparse.Namespace) -> int:
+    """
+    Run the legacy interactive single-task workflow.
+
+    Args:
+        args, argparse.Namespace: parsed CLI arguments containing output_dir and verbose.
+
+    Returns:
+        exit_code, int, 0 or 1: process-style status code.
+    """
     task_text = input("\nAufgabe für die Agenten:\n> ").strip()
     task = BenchmarkTask(task_id="interactive", source="interactive", prompt=task_text)
     result = run_agentic_loop(task, build_default_experiment(), verbose=args.verbose)
@@ -60,6 +78,15 @@ def interactive(args: argparse.Namespace) -> int:
 
 
 def validate_config(args: argparse.Namespace) -> int:
+    """
+    Validate an experiment configuration CSV from the CLI.
+
+    Args:
+        args, argparse.Namespace: parsed CLI arguments containing config path.
+
+    Returns:
+        exit_code, int, 0 or 1: 0 when the config is valid, otherwise 1.
+    """
     configs = load_experiment_configs(args.config)
     errors = validate_experiment_configs(configs)
     if errors:
@@ -71,6 +98,15 @@ def validate_config(args: argparse.Namespace) -> int:
 
 
 def list_tasks(args: argparse.Namespace) -> int:
+    """
+    Print task identifiers from a supported task provider file.
+
+    Args:
+        args, argparse.Namespace: parsed CLI arguments containing provider, tasks, limit, and task_id.
+
+    Returns:
+        exit_code, int, 0: list operation completed.
+    """
     tasks = load_tasks(args.provider, args.tasks, limit=args.limit, task_id=args.task_id)
     for task in tasks:
         print(f"{task.source}\t{task.task_id}\t{task.entry_point or ''}")
@@ -79,6 +115,16 @@ def list_tasks(args: argparse.Namespace) -> int:
 
 
 def prepare_load_mode(config: ExperimentConfig, warmed: set[str]) -> None:
+    """
+    Apply warm or cold model-loading semantics for one benchmark run.
+
+    Args:
+        config, ExperimentConfig: experiment whose Coder/Reviewer models should be prepared.
+        warmed, set[str]: mutable cache of models already warmed for this process.
+
+    Returns:
+        None.
+    """
     agents = [config.coder] + ([config.reviewer] if config.reviewer else [])
     if config.load_mode == "warm":
         for agent in agents:
@@ -98,6 +144,15 @@ def prepare_load_mode(config: ExperimentConfig, warmed: set[str]) -> None:
 
 
 def run_benchmark(args: argparse.Namespace) -> int:
+    """
+    Run the benchmark matrix for all configured experiments and selected tasks.
+
+    Args:
+        args, argparse.Namespace: parsed CLI arguments for config, tasks, filters, and output.
+
+    Returns:
+        exit_code, int, 0 or 1: 0 on successful benchmark completion, otherwise 1.
+    """
     configs = load_experiment_configs(args.config)
     errors = validate_experiment_configs(configs)
     if errors:
@@ -143,6 +198,15 @@ def run_benchmark(args: argparse.Namespace) -> int:
 
 
 def write_sample_config(args: argparse.Namespace) -> int:
+    """
+    Write a starter experiment configuration CSV.
+
+    Args:
+        args, argparse.Namespace: parsed CLI arguments containing destination path.
+
+    Returns:
+        exit_code, int, 0: sample config was written.
+    """
     path = Path(args.path)
     path.parent.mkdir(parents=True, exist_ok=True)
     fields = [
@@ -228,6 +292,15 @@ def write_sample_config(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """
+    Construct the command-line parser and all subcommands.
+
+    Args:
+        None.
+
+    Returns:
+        parser, argparse.ArgumentParser: parser for interactive, run, validation, task listing, and sample config commands.
+    """
     parser = argparse.ArgumentParser(description="Agentic loop benchmark runner for local LLMs.")
     subparsers = parser.add_subparsers(dest="command", required=False)
 
@@ -267,6 +340,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """
+    CLI entry point used by both module execution and the compatibility script.
+
+    Args:
+        argv, list[str] | None: optional argument vector; None reads from sys.argv.
+
+    Returns:
+        exit_code, int, 0 or 1: process-style status code returned by the selected command.
+    """
     parser = build_parser()
     args = parser.parse_args(argv)
     if not hasattr(args, "func"):

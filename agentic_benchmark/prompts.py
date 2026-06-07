@@ -20,6 +20,15 @@ Wichtige Regeln:
 
 
 def format_task(task: BenchmarkTask) -> str:
+    """
+    Render a provider-neutral task block for prompts.
+
+    Args:
+        task, BenchmarkTask: task id, prompt, entry point, and metadata.
+
+    Returns:
+        task_text, str: formatted task description for Coder and Reviewer prompts.
+    """
     metadata = json.dumps(task.metadata, ensure_ascii=False, indent=2) if task.metadata else "{}"
     parts = [
         f"TASK SOURCE: {task.source}",
@@ -38,6 +47,17 @@ def feedback_for_mode(
     review: dict[str, Any] | None,
     syntax_error: str | None,
 ) -> str:
+    """
+    Render feedback according to the experiment feedback mode.
+
+    Args:
+        feedback_mode, str: one of none, compact_json, full_json, critical_only, suggestions_only.
+        review, dict[str, Any] | None: previous Reviewer output.
+        syntax_error, str | None: latest syntax error.
+
+    Returns:
+        feedback, str: text inserted into the next Coder prompt.
+    """
     if feedback_mode == "none":
         return "Feedback ist für diese Konfiguration deaktiviert."
     if feedback_mode == "critical_only":
@@ -60,6 +80,20 @@ def make_coder_prompt(
     feedback_mode: str = "compact_json",
     template_name: str = "coder_default",
 ) -> str:
+    """
+    Build the prompt sent to the Coder agent.
+
+    Args:
+        task, BenchmarkTask: task being solved.
+        code, str: current candidate code from the previous round.
+        review, dict[str, Any] | None: previous Reviewer feedback.
+        syntax_error, str | None: current local syntax error.
+        feedback_mode, str: feedback rendering strategy.
+        template_name, str: Coder prompt template identifier.
+
+    Returns:
+        prompt, str: complete Coder prompt that requests Python code only.
+    """
     feedback = feedback_for_mode(feedback_mode, review, syntax_error)
     task_text = format_task(task)
 
@@ -103,6 +137,19 @@ def make_reviewer_prompt(
     *,
     template_name: str = "reviewer_default",
 ) -> str:
+    """
+    Build the prompt sent to the Reviewer agent.
+
+    Args:
+        task, BenchmarkTask: task being reviewed.
+        code, str: generated code to review.
+        syntax_ok, bool: local syntax validation result.
+        syntax_error, str: local syntax error text, or empty string.
+        template_name, str: Reviewer prompt template identifier.
+
+    Returns:
+        prompt, str: complete Reviewer prompt that requests JSON only.
+    """
     task_text = format_task(task)
     strictness = "sehr knapp" if template_name == "reviewer_minimal" else "streng und hilfreich"
 

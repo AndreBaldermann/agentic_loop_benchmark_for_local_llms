@@ -20,7 +20,13 @@ class AgentConfig:
 
 @dataclass(frozen=True)
 class ExperimentConfig:
-    """Configuration for a complete agentic loop experiment."""
+    """
+    Defines one benchmark matrix row.
+
+    The experiment combines agent settings, loop behavior, feedback strategy,
+    loading mode, repetition count, and final evaluator. A benchmark run is
+    the Cartesian product of ExperimentConfig rows and loaded tasks.
+    """
 
     experiment_id: str
     task_provider: str
@@ -39,7 +45,13 @@ class ExperimentConfig:
 
 @dataclass(frozen=True)
 class BenchmarkTask:
-    """A task from an interchangeable benchmark provider."""
+    """
+    Represents one benchmark task independent of its provider.
+
+    HumanEval, CSV, and future task providers normalize their inputs into
+    this class so the loop runner can stay provider-agnostic. Optional test
+    fields are used only by evaluators that need them.
+    """
 
     task_id: str
     source: str
@@ -52,7 +64,13 @@ class BenchmarkTask:
 
 @dataclass(frozen=True)
 class ModelCallResult:
-    """Normalized response and metrics for a single model call."""
+    """
+    Stores the normalized result of one Ollama call.
+
+    Successful calls preserve backend timing and token metrics. Failed calls
+    deliberately carry zero backend metrics and a failure flag so one bad
+    model response can be recorded without aborting the full benchmark.
+    """
 
     output: str
     wallclock_s: float
@@ -76,28 +94,60 @@ class ModelCallResult:
 
     @property
     def prompt_tokens(self) -> int:
+        """
+        Return input token count for CSV aggregation.
+
+        Returns:
+            prompt_tokens, int, >= 0: backend prompt count, fallback estimate,
+            or 0 for failed calls.
+        """
         if self.failed:
             return 0
         return self.prompt_eval_count or self.prompt_estimated_tokens
 
     @property
     def output_tokens(self) -> int:
+        """
+        Return output token count for CSV aggregation.
+
+        Returns:
+            output_tokens, int, >= 0: backend generation count, or 0 for
+            failed calls.
+        """
         if self.failed:
             return 0
         return self.eval_count
 
     @property
     def used_tokens(self) -> int:
+        """
+        Return total tokens attributed to this call.
+
+        Returns:
+            used_tokens, int, >= 0: prompt_tokens plus output_tokens.
+        """
         return self.prompt_tokens + self.output_tokens
 
     @property
     def model_execution_s(self) -> float:
+        """
+        Return prompt-processing plus generation time.
+
+        Returns:
+            seconds, float, >= 0.0: prompt_eval_duration_s plus eval_duration_s.
+        """
         return self.prompt_eval_duration_s + self.eval_duration_s
 
 
 @dataclass(frozen=True)
 class EvaluationResult:
-    """Optional evaluator result for a generated artifact."""
+    """
+    Describes optional post-loop evaluation of final generated code.
+
+    The benchmark focuses on loop behavior, so evaluation may be disabled.
+    When enabled, this class captures pass/fail, scores, timings, and process
+    output from syntax or HumanEval evaluators.
+    """
 
     enabled: bool
     name: str
@@ -112,7 +162,13 @@ class EvaluationResult:
 
 @dataclass(frozen=True)
 class AgentCallRecord:
-    """CSV-friendly record for one concrete agent call."""
+    """
+    Flattens one Coder or Reviewer call for agent_calls.csv.
+
+    Each row records prompt/output sizes, token counts, timing data, failure
+    state, and loop metadata. The invariant is one AgentCallRecord per model
+    request that belongs to a measured task run.
+    """
 
     run_id: str
     experiment_id: str
@@ -152,7 +208,13 @@ class AgentCallRecord:
 
 @dataclass
 class LoopRunResult:
-    """Final result and telemetry for one task/config/repetition run."""
+    """
+    Aggregates the complete outcome of one task/config/repetition run.
+
+    The result keeps final code, stop reason, optional evaluation, per-call
+    records, and rich JSON history. ResultsWriter later persists this object
+    into summary CSV rows and artifact files.
+    """
 
     run_id: str
     timestamp: str

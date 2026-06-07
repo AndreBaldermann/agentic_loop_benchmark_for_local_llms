@@ -9,13 +9,32 @@ from .models import BenchmarkTask
 
 
 def _open_text(path: Path):
+    """
+    Open plain text or gzip-compressed text files.
+
+    Args:
+        path, Path: file path ending in .gz for gzip or any other suffix for plain text.
+
+    Returns:
+        handle, TextIO: readable text file handle.
+    """
     if path.suffix == ".gz":
         return gzip.open(path, "rt", encoding="utf-8")
     return path.open("r", encoding="utf-8")
 
 
 def load_humaneval_tasks(path: str | Path, *, limit: int | None = None, task_id: str | None = None) -> list[BenchmarkTask]:
-    """Load OpenAI HumanEval-compatible JSONL or JSONL.GZ tasks."""
+    """
+    Load OpenAI HumanEval-compatible tasks from JSONL or JSONL.GZ.
+
+    Args:
+        path, str | Path: input task file path.
+        limit, int | None: optional maximum number of tasks to load.
+        task_id, str | None: optional exact task id filter.
+
+    Returns:
+        tasks, list[BenchmarkTask]: loaded HumanEval task objects.
+    """
     source_path = Path(path)
     tasks: list[BenchmarkTask] = []
     with _open_text(source_path) as f:
@@ -47,6 +66,17 @@ def load_humaneval_tasks(path: str | Path, *, limit: int | None = None, task_id:
 
 
 def load_csv_tasks(path: str | Path, *, limit: int | None = None, task_id: str | None = None) -> list[BenchmarkTask]:
+    """
+    Load generic benchmark tasks from a CSV file.
+
+    Args:
+        path, str | Path: input CSV path with task_id and prompt columns.
+        limit, int | None: optional maximum number of tasks to load.
+        task_id, str | None: optional exact task id filter.
+
+    Returns:
+        tasks, list[BenchmarkTask]: loaded CSV task objects.
+    """
     source_path = Path(path)
     tasks: list[BenchmarkTask] = []
     with source_path.open("r", encoding="utf-8", newline="") as f:
@@ -79,6 +109,18 @@ def load_tasks(
     limit: int | None = None,
     task_id: str | None = None,
 ) -> list[BenchmarkTask]:
+    """
+    Load tasks from a named provider.
+
+    Args:
+        provider, str: supported value humaneval or csv.
+        path, str | Path: provider-specific task file path.
+        limit, int | None: optional maximum number of tasks to load.
+        task_id, str | None: optional exact task id filter.
+
+    Returns:
+        tasks, list[BenchmarkTask]: loaded tasks in provider order.
+    """
     if provider == "humaneval":
         return load_humaneval_tasks(path, limit=limit, task_id=task_id)
     if provider == "csv":

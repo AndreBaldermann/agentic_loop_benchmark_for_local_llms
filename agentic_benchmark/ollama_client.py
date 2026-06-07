@@ -16,6 +16,15 @@ TIMEOUT_SECONDS = 600
 
 
 def ns_to_s(value: Any) -> float:
+    """
+    Convert Ollama nanosecond durations to seconds.
+
+    Args:
+        value, Any: numeric nanosecond value or missing value.
+
+    Returns:
+        seconds, float, >= 0.0: duration in seconds, or 0.0 on invalid input.
+    """
     try:
         return float(value or 0) / 1_000_000_000
     except (TypeError, ValueError):
@@ -23,6 +32,15 @@ def ns_to_s(value: Any) -> float:
 
 
 def safe_int(value: Any) -> int:
+    """
+    Convert backend values to integers without raising.
+
+    Args:
+        value, Any: integer-like value from Ollama response JSON.
+
+    Returns:
+        number, int, >= 0 in normal use: parsed integer or 0 on invalid input.
+    """
     try:
         return int(value or 0)
     except (TypeError, ValueError):
@@ -37,7 +55,19 @@ def failed_call_result(
     error_type: str,
     error_message: str,
 ) -> ModelCallResult:
-    """Return a zero-metric call result so one bad model call does not abort a benchmark."""
+    """
+    Build a zero-metric model-call result for failed backend calls.
+
+    Args:
+        config, AgentConfig: agent role and model configuration for the failed call.
+        prompt, str: prompt that was sent or attempted.
+        start, float: wall-clock start timestamp from time.time().
+        error_type, str: stable machine-readable failure category.
+        error_message, str: human-readable failure detail.
+
+    Returns:
+        result, ModelCallResult: failed call record with zero backend durations and tokens.
+    """
     return ModelCallResult(
         output="",
         wallclock_s=time.time() - start,
@@ -68,7 +98,18 @@ def ollama(
     api_url: str = OLLAMA_API_URL,
     timeout_seconds: int | None = None,
 ) -> ModelCallResult:
-    """Call local Ollama and convert call failures into zero-metric results."""
+    """
+    Call Ollama and normalize both success and failure results.
+
+    Args:
+        config, AgentConfig: model, timeout, context, and generation settings.
+        prompt, str: prompt text sent to Ollama.
+        api_url, str: Ollama generate endpoint URL.
+        timeout_seconds, int | None: override for config timeout, or None to use config.
+
+    Returns:
+        result, ModelCallResult: model output, backend metrics, or zero-metric failure information.
+    """
     start = time.time()
     effective_timeout = timeout_seconds if timeout_seconds is not None else config.timeout_seconds
 
@@ -163,17 +204,42 @@ def ollama(
 
 
 def run_agent(config: AgentConfig, prompt: str) -> ModelCallResult:
-    """Run an agent role using its configuration."""
+    """
+    Invoke one configured agent role.
+
+    Args:
+        config, AgentConfig: role-specific Ollama configuration.
+        prompt, str: prompt to send.
+
+    Returns:
+        result, ModelCallResult: normalized call result.
+    """
     return ollama(config, prompt)
 
 
 def warm_agent(config: AgentConfig) -> ModelCallResult:
-    """Warm a model outside measured benchmark rows for warm load-mode runs."""
+    """
+    Warm a model before measured benchmark calls.
+
+    Args:
+        config, AgentConfig: model to load into Ollama.
+
+    Returns:
+        result, ModelCallResult: warm-up call result, usually ignored for metrics.
+    """
     warm_config = replace(config, num_predict=1, json_mode=False)
     return ollama(warm_config, "Return OK.")
 
 
 def unload_agent(config: AgentConfig) -> ModelCallResult:
-    """Ask Ollama to unload a model so the next measured call captures load time."""
+    """
+    Unload a model from Ollama before cold-start measurement.
+
+    Args:
+        config, AgentConfig: model to unload.
+
+    Returns:
+        result, ModelCallResult: unload request result for warnings or diagnostics.
+    """
     unload_config = replace(config, keep_alive="0", num_predict=1, json_mode=False)
     return ollama(unload_config, "")
