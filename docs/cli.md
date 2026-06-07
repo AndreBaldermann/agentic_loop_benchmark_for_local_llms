@@ -102,11 +102,12 @@ Options:
 
 ### `report-pdf`
 
-Generate a first overview PDF from a benchmark `summary.csv`. Rows are `task_id`, columns are `experiment_id`, and each cell shows `rounds_used / max_rounds`.
+Generate a first overview PDF from a benchmark `summary.csv`. Rows are `task_id`, columns are `experiment_id`, and every experiment/task cell is subdivided into `R` (`rounds_used / max_rounds`), `TCT` (total generated Coder tokens), and `TRT` (total generated Reviewer tokens).
 
 ```bash
 python3 -m agentic_benchmark.cli report-pdf \
   --summary results/run_20260607_120000/summary.csv \
+  --agent-calls results/run_20260607_120000/agent_calls.csv \
   --output reports/run_20260607_120000/overview.pdf
 ```
 
@@ -116,6 +117,7 @@ Options:
 |---|---:|---|
 | `--summary` | required | Path to `summary.csv` from a benchmark run. |
 | `--output` | required | Destination PDF path, or an existing directory where `overview.pdf` is written. |
+| `--agent-calls` | inferred next to `summary.csv` | Optional `agent_calls.csv` path used to aggregate TCT/TRT token columns. |
 | `--title` | `Agentic Benchmark Report` | Title printed on the PDF pages. |
 
 Generate the same PDF directly during a benchmark run:
@@ -130,11 +132,13 @@ python3 -m agentic_benchmark.cli run \
 
 Color rules:
 
-- `rounds_used = 1`: green.
-- Intermediate `rounds_used`: interpolated between green and red.
-- `rounds_used = max_rounds`: red, unless overridden by a stop reason below.
+- `R` with `rounds_used = 1`: green.
+- Intermediate `R`: interpolated between green and red.
+- `R` with `rounds_used = max_rounds`: red, unless overridden by a stop reason below.
 - `stagnation_detected`: gray.
 - `max_rounds_reached`: blue.
+- `TCT` and `TRT`: minimum positive token total is green and maximum positive token total is red.
+- `TCT` or `TRT` with `0` tokens: blue, which highlights timeouts, failures, or disabled roles.
 
 ### `write-sample-config`
 

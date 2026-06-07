@@ -37,6 +37,7 @@ The benchmark writes a timestamped result directory containing:
 ```bash
 python3 -m agentic_benchmark.cli report-pdf \
   --summary results/run_YYYYMMDD_HHMMSS/summary.csv \
+  --agent-calls results/run_YYYYMMDD_HHMMSS/agent_calls.csv \
   --output reports/overview.pdf
 
 # Or generate overview.pdf directly after a benchmark run:
@@ -46,6 +47,8 @@ python3 -m agentic_benchmark.cli run \
   --limit 1 \
   --pdf-report
 ```
+
+The PDF overview subdivides every task/experiment cell into `R` (rounds/max rounds), `TCT` (total generated Coder tokens), and `TRT` (total generated Reviewer tokens).
 
 ## CLI reference
 

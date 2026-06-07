@@ -165,7 +165,31 @@ def resolve_pdf_output_path(output_dir: Path, pdf_output: str | None) -> Path:
     return output_path
 
 
-def generate_pdf_report_for_run(summary_path: Path, output_path: Path, title: str) -> int:
+def infer_agent_calls_path(summary_path: Path, explicit_agent_calls: str | None = None) -> Path | None:
+    """
+    Resolve the optional agent_calls.csv path for PDF token aggregation.
+
+    Args:
+        summary_path, Path: summary.csv path supplied to the report command.
+        explicit_agent_calls, str | None: optional user-provided agent_calls.csv path.
+
+    Returns:
+        agent_calls_path, Path | None: existing agent calls path, or None when unavailable.
+    """
+    if explicit_agent_calls:
+        return Path(explicit_agent_calls)
+    candidate = summary_path.parent / "agent_calls.csv"
+    if summary_path.name != "agent_calls.csv" and candidate.exists():
+        return candidate
+    return None
+
+
+def generate_pdf_report_for_run(
+    summary_path: Path,
+    output_path: Path,
+    title: str,
+    agent_calls_path: Path | None = None,
+) -> int:
     """
     Generate an overview PDF and convert rendering errors into CLI status.
 
@@ -173,12 +197,13 @@ def generate_pdf_report_for_run(summary_path: Path, output_path: Path, title: st
         summary_path, Path: summary.csv produced by the benchmark run.
         output_path, Path: target PDF path.
         title, str: report title printed on each page.
+        agent_calls_path, Path | None: optional agent_calls.csv path for R/TCT/TRT token aggregation.
 
     Returns:
         exit_code, int, 0 or 1: 0 when the PDF was written, otherwise 1.
     """
     try:
-        written = generate_overview_pdf(summary_path, output_path, title=title)
+        written = generate_overview_pdf(summary_path, output_path, title=title, agent_calls_path=agent_calls_path)
     except (OSError, ValueError) as exc:
         print(f"ERROR: could not generate PDF report: {exc}")
         return 1
@@ -240,7 +265,7 @@ def run_benchmark(args: argparse.Namespace) -> int:
 
     if args.pdf_report:
         pdf_output = resolve_pdf_output_path(output_dir, args.pdf_output)
-        return generate_pdf_report_for_run(writer.summary_path, pdf_output, args.pdf_title)
+        return generate_pdf_report_for_run(writer.summary_path, pdf_output, args.pdf_title, writer.agent_calls_path)
     return 0
 
 
@@ -258,7 +283,8 @@ def report_pdf(args: argparse.Namespace) -> int:
     output_path = Path(args.output)
     if output_path.is_dir():
         output_path = output_path / "overview.pdf"
-    return generate_pdf_report_for_run(summary_path, output_path, args.title)
+    agent_calls_path = infer_agent_calls_path(summary_path, args.agent_calls)
+    return generate_pdf_report_for_run(summary_path, output_path, args.title, agent_calls_path)
 
 
 def write_sample_config(args: argparse.Namespace) -> int:
@@ -413,6 +439,7 @@ def build_parser() -> argparse.ArgumentParser:
     pdf_parser = subparsers.add_parser("report-pdf", help="Generate an overview PDF from summary.csv.")
     pdf_parser.add_argument("--summary", required=True, help="Path to summary.csv from a benchmark run.")
     pdf_parser.add_argument("--output", required=True, help="Destination PDF path or existing output directory.")
+    pdf_parser.add_argument("--agent-calls", help="Optional agent_calls.csv path for Coder/Reviewer token columns; inferred next to summary.csv when present.")
     pdf_parser.add_argument("--title", default="Agentic Benchmark Report")
     pdf_parser.set_defaults(func=report_pdf)
 

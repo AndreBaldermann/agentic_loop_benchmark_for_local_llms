@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from agentic_benchmark.reporting.pdf import aggregate_overview, generate_overview_pdf, text_command
+from agentic_benchmark.reporting.pdf import aggregate_overview, generate_overview_pdf, text_command, token_color, TokenRange
 
 
 class PdfReportTests(unittest.TestCase):
@@ -25,6 +25,7 @@ class PdfReportTests(unittest.TestCase):
                 "repetition": "1",
                 "round_no": "1",
                 "agent_role": "Coder",
+                "output_tokens": "337",
             },
             {
                 "run_id": "20260607_103907_538776",
@@ -33,6 +34,7 @@ class PdfReportTests(unittest.TestCase):
                 "repetition": "1",
                 "round_no": "1",
                 "agent_role": "Reviewer",
+                "output_tokens": "83",
             },
             {
                 "run_id": "20260607_103945_261855",
@@ -41,10 +43,13 @@ class PdfReportTests(unittest.TestCase):
                 "repetition": "1",
                 "round_no": "1",
                 "agent_role": "Coder",
+                "output_tokens": "311",
             },
         ]
         cells = aggregate_overview(rows)
         self.assertEqual(cells[("HumanEval/0", "qwen_self_review")].label, "1/1")
+        self.assertEqual(cells[("HumanEval/0", "qwen_self_review")].coder_tokens_label(), "337")
+        self.assertEqual(cells[("HumanEval/0", "qwen_self_review")].reviewer_tokens_label(), "83")
         self.assertEqual(cells[("HumanEval/0", "qwen_self_review")].repetitions, 1)
         self.assertEqual(cells[("HumanEval/0", "qwen_no_review")].label, "1/1")
 
@@ -53,11 +58,11 @@ class PdfReportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             summary_path = Path(tmp) / "agent_calls.csv"
             output_path = Path(tmp) / "overview.pdf"
-            fieldnames = ["run_id", "experiment_id", "task_id", "repetition", "round_no", "agent_role"]
+            fieldnames = ["run_id", "experiment_id", "task_id", "repetition", "round_no", "agent_role", "output_tokens"]
             rows = [
-                ["20260607_103907_538776", "qwen_self_review", "HumanEval/0", "1", "1", "Coder"],
-                ["20260607_103907_538776", "qwen_self_review", "HumanEval/0", "1", "1", "Reviewer"],
-                ["20260607_103945_261855", "qwen_no_review", "HumanEval/0", "1", "1", "Coder"],
+                ["20260607_103907_538776", "qwen_self_review", "HumanEval/0", "1", "1", "Coder", "337"],
+                ["20260607_103907_538776", "qwen_self_review", "HumanEval/0", "1", "1", "Reviewer", "83"],
+                ["20260607_103945_261855", "qwen_no_review", "HumanEval/0", "1", "1", "Coder", "311"],
             ]
             with summary_path.open("w", encoding="utf-8", newline="") as f:
                 writer = csv.writer(f)
@@ -71,7 +76,21 @@ class PdfReportTests(unittest.TestCase):
         self.assertIn("(HumanEval/0)", pdf_text)
         self.assertIn("(qwen_self_review)", pdf_text)
         self.assertIn("(qwen_no_review)", pdf_text)
+        self.assertIn("(R)", pdf_text)
+        self.assertIn("(TCT)", pdf_text)
+        self.assertIn("(TRT)", pdf_text)
         self.assertIn("(1/1)", pdf_text)
+        self.assertIn("(337)", pdf_text)
+        self.assertIn("(83)", pdf_text)
+
+    def test_zero_tokens_are_blue_and_positive_tokens_interpolate(self):
+        """Verify token color rules use blue for zero and redder colors for higher usage."""
+        low = token_color(10, TokenRange(10, 100))
+        high = token_color(100, TokenRange(10, 100))
+        zero = token_color(0, TokenRange(10, 100))
+        self.assertEqual(zero, (0.35, 0.60, 0.95))
+        self.assertLess(low[0], high[0])
+        self.assertGreater(low[1], high[1])
 
 
 if __name__ == "__main__":
