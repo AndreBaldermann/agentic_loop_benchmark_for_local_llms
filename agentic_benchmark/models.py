@@ -6,13 +6,7 @@ from typing import Any
 
 @dataclass(frozen=True)
 class AgentConfig:
-    """
-    Describes one model-backed role in the agentic loop.
-
-    The configuration is intentionally immutable so benchmark rows can be
-    copied into result artifacts without later mutation changing the meaning
-    of a run. Coder and Reviewer roles both use this structure.
-    """
+    """Configuration for a single Ollama-backed agent role."""
 
     role: str
     model: str
