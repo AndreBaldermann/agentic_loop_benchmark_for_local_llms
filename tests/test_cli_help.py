@@ -26,7 +26,16 @@ class CliHelpTests(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as stdout, self.assertRaises(SystemExit) as cm:
             parser.parse_args(["run", "--help"])
         help_text = stdout.getvalue()
-        for option in ["--config", "--tasks", "--output-dir", "--limit", "--task-id"]:
+        expected_options = [
+            "--config",
+            "--tasks",
+            "--output-dir",
+            "--limit",
+            "--task-id",
+            "--pdf-report",
+            "--pdf-output",
+        ]
+        for option in expected_options:
             self.assertIn(option, help_text)
         self.assertEqual(cm.exception.code, 0)
 

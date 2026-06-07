@@ -22,7 +22,8 @@ python3 -m agentic_benchmark.cli validate-config --config configs/loop_configs.c
 python3 -m agentic_benchmark.cli run \
   --config configs/loop_configs.csv \
   --tasks data/humaneval/HumanEval.jsonl.gz \
-  --limit 10
+  --limit 10 \
+  --pdf-report
 ```
 
 The benchmark writes a timestamped result directory containing:
@@ -37,6 +38,13 @@ The benchmark writes a timestamped result directory containing:
 python3 -m agentic_benchmark.cli report-pdf \
   --summary results/run_YYYYMMDD_HHMMSS/summary.csv \
   --output reports/overview.pdf
+
+# Or generate overview.pdf directly after a benchmark run:
+python3 -m agentic_benchmark.cli run \
+  --config configs/loop_configs.csv \
+  --tasks HumanEval.jsonl.gz \
+  --limit 1 \
+  --pdf-report
 ```
 
 ## CLI reference

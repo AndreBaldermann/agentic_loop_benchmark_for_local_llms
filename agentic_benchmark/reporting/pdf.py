@@ -160,7 +160,7 @@ def text_command(x: float, y: float, text: Any, *, size: int = BODY_FONT_SIZE) -
     Returns:
         command, str: PDF text command.
     """
-    return f"BT /F1 {size} Tf {x:.2f} {y:.2f} Td ({escape_pdf_text(text)}) Tj ET"
+    return f"0 0 0 rg BT /F1 {size} Tf {x:.2f} {y:.2f} Td ({escape_pdf_text(text)}) Tj ET"
 
 
 def fill_rect_command(x: float, y: float, width: float, height: float, color: tuple[float, float, float]) -> str:
@@ -244,12 +244,94 @@ def load_summary_rows(summary_path: str | Path) -> list[dict[str, str]]:
         return list(csv.DictReader(f))
 
 
-def aggregate_overview(rows: list[dict[str, str]]) -> dict[tuple[str, str], OverviewCell]:
+def row_identity(row: dict[str, str]) -> tuple[str, str]:
     """
-    Aggregate summary rows into task/experiment overview cells.
+    Build a stable identity for one logical benchmark attempt.
 
     Args:
-        rows, list[dict[str, str]]: rows from summary.csv.
+        row, dict[str, str]: summary.csv or agent_calls.csv row.
+
+    Returns:
+        identity, tuple[str, str]: run/repetition pair used to group per-call rows.
+    """
+    return (row.get("run_id", ""), row.get("repetition", ""))
+
+
+def row_has_value(row: dict[str, str], key: str) -> bool:
+    """
+    Check whether a CSV row contains a non-empty value.
+
+    Args:
+        row, dict[str, str]: CSV row to inspect.
+        key, str: field name to check.
+
+    Returns:
+        has_value, bool: True when the field exists and is not an empty string.
+    """
+    return row.get(key, "") not in ("", None)
+
+
+def aggregate_summary_bucket(bucket: list[dict[str, str]]) -> OverviewCell:
+    """
+    Aggregate normal summary.csv rows for one task/experiment pair.
+
+    Args:
+        bucket, list[dict[str, str]]: rows sharing task_id and experiment_id.
+
+    Returns:
+        cell, OverviewCell: averaged rounds/max-rounds display data.
+    """
+    rounds_values = [parse_int(row.get("rounds_used"), 0) for row in bucket]
+    max_values = [parse_int(row.get("max_rounds"), 1) for row in bucket]
+    rounds_avg = sum(rounds_values) / max(1, len(rounds_values))
+    max_rounds = max(max_values) if max_values else 1
+    stop_reasons = tuple(row.get("stop_reason", "") for row in bucket)
+    return OverviewCell(
+        rounds_used=rounds_avg,
+        max_rounds=max_rounds,
+        stop_reasons=stop_reasons,
+        repetitions=len(bucket),
+    )
+
+
+def aggregate_agent_call_bucket(bucket: list[dict[str, str]]) -> OverviewCell:
+    """
+    Aggregate agent_calls.csv-style rows for one task/experiment pair.
+
+    Args:
+        bucket, list[dict[str, str]]: per-agent-call rows sharing task_id and experiment_id.
+
+    Returns:
+        cell, OverviewCell: display data derived from the maximum round_no per logical attempt.
+    """
+    attempts: dict[tuple[str, str], list[dict[str, str]]] = {}
+    for row in bucket:
+        attempts.setdefault(row_identity(row), []).append(row)
+
+    # agent_calls.csv contains one row per concrete Coder/Reviewer call. For
+    # the overview matrix, those rows must collapse back into one benchmark
+    # attempt; otherwise Coder+Reviewer calls from the same round look like
+    # separate repetitions and distort the label.
+    rounds_values = [max(parse_int(row.get("round_no"), 0) for row in rows) for rows in attempts.values()]
+    fallback_max_rounds = max(rounds_values) if rounds_values else 1
+    max_values = [parse_int(row.get("max_rounds"), 0) for row in bucket if row_has_value(row, "max_rounds")]
+    max_rounds = max(max_values) if max_values else fallback_max_rounds
+    stop_reasons = tuple(row.get("stop_reason", "") for row in bucket if row_has_value(row, "stop_reason"))
+    rounds_avg = sum(rounds_values) / max(1, len(rounds_values))
+    return OverviewCell(
+        rounds_used=rounds_avg,
+        max_rounds=max(1, max_rounds),
+        stop_reasons=stop_reasons,
+        repetitions=len(attempts),
+    )
+
+
+def aggregate_overview(rows: list[dict[str, str]]) -> dict[tuple[str, str], OverviewCell]:
+    """
+    Aggregate CSV rows into task/experiment overview cells.
+
+    Args:
+        rows, list[dict[str, str]]: rows from summary.csv or agent_calls.csv.
 
     Returns:
         cells, dict[tuple[str, str], OverviewCell]: mapping from (task_id, experiment_id) to display data.
@@ -261,17 +343,10 @@ def aggregate_overview(rows: list[dict[str, str]]) -> dict[tuple[str, str], Over
 
     cells: dict[tuple[str, str], OverviewCell] = {}
     for key, bucket in buckets.items():
-        rounds_values = [parse_int(row.get("rounds_used"), 0) for row in bucket]
-        max_values = [parse_int(row.get("max_rounds"), 1) for row in bucket]
-        rounds_avg = sum(rounds_values) / max(1, len(rounds_values))
-        max_rounds = max(max_values) if max_values else 1
-        stop_reasons = tuple(row.get("stop_reason", "") for row in bucket)
-        cells[key] = OverviewCell(
-            rounds_used=rounds_avg,
-            max_rounds=max_rounds,
-            stop_reasons=stop_reasons,
-            repetitions=len(bucket),
-        )
+        if any(row_has_value(row, "rounds_used") for row in bucket):
+            cells[key] = aggregate_summary_bucket(bucket)
+        elif any(row_has_value(row, "round_no") for row in bucket):
+            cells[key] = aggregate_agent_call_bucket(bucket)
     return cells
 
 

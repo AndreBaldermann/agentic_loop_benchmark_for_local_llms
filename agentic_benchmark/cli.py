@@ -144,12 +144,54 @@ def prepare_load_mode(config: ExperimentConfig, warmed: set[str]) -> None:
                 print(f"WARNING: unload failed for {agent.role} model {agent.model}: {result.error_message}")
 
 
+def resolve_pdf_output_path(output_dir: Path, pdf_output: str | None) -> Path:
+    """
+    Resolve the PDF report output path for run --pdf-report.
+
+    Args:
+        output_dir, Path: timestamped benchmark output directory.
+        pdf_output, str | None: optional user-provided PDF path or directory.
+
+    Returns:
+        output_path, Path: concrete PDF file path.
+    """
+    if not pdf_output:
+        return output_dir / "overview.pdf"
+    output_path = Path(pdf_output)
+    if output_path.exists() and output_path.is_dir():
+        return output_path / "overview.pdf"
+    if output_path.suffix.lower() != ".pdf":
+        return output_path / "overview.pdf"
+    return output_path
+
+
+def generate_pdf_report_for_run(summary_path: Path, output_path: Path, title: str) -> int:
+    """
+    Generate an overview PDF and convert rendering errors into CLI status.
+
+    Args:
+        summary_path, Path: summary.csv produced by the benchmark run.
+        output_path, Path: target PDF path.
+        title, str: report title printed on each page.
+
+    Returns:
+        exit_code, int, 0 or 1: 0 when the PDF was written, otherwise 1.
+    """
+    try:
+        written = generate_overview_pdf(summary_path, output_path, title=title)
+    except (OSError, ValueError) as exc:
+        print(f"ERROR: could not generate PDF report: {exc}")
+        return 1
+    print(f"Wrote PDF report: {written}")
+    return 0
+
+
 def run_benchmark(args: argparse.Namespace) -> int:
     """
     Run the benchmark matrix for all configured experiments and selected tasks.
 
     Args:
-        args, argparse.Namespace: parsed CLI arguments for config, tasks, filters, and output.
+        args, argparse.Namespace: parsed CLI arguments for config, tasks, filters, output, and optional PDF reporting.
 
     Returns:
         exit_code, int, 0 or 1: 0 on successful benchmark completion, otherwise 1.
@@ -195,6 +237,10 @@ def run_benchmark(args: argparse.Namespace) -> int:
     print(f"\nWrote summary: {writer.summary_path}")
     print(f"Wrote agent calls: {writer.agent_calls_path}")
     print(f"Wrote artifacts: {writer.artifacts_dir}")
+
+    if args.pdf_report:
+        pdf_output = resolve_pdf_output_path(output_dir, args.pdf_output)
+        return generate_pdf_report_for_run(writer.summary_path, pdf_output, args.pdf_title)
     return 0
 
 
@@ -212,13 +258,7 @@ def report_pdf(args: argparse.Namespace) -> int:
     output_path = Path(args.output)
     if output_path.is_dir():
         output_path = output_path / "overview.pdf"
-    try:
-        written = generate_overview_pdf(summary_path, output_path, title=args.title)
-    except (OSError, ValueError) as exc:
-        print(f"ERROR: could not generate PDF report: {exc}")
-        return 1
-    print(f"Wrote PDF report: {written}")
-    return 0
+    return generate_pdf_report_for_run(summary_path, output_path, args.title)
 
 
 def write_sample_config(args: argparse.Namespace) -> int:
@@ -343,6 +383,20 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--verbose", action="store_true")
     run_parser.add_argument("--copy-config", action="store_true", default=True)
     run_parser.add_argument("--no-copy-config", action="store_false", dest="copy_config")
+    run_parser.add_argument(
+        "--pdf-report",
+        action="store_true",
+        help="Generate overview.pdf from this run's summary.csv after the benchmark completes.",
+    )
+    run_parser.add_argument(
+        "--pdf-output",
+        help="Optional PDF path or directory for --pdf-report; defaults to the run output directory.",
+    )
+    run_parser.add_argument(
+        "--pdf-title",
+        default="Agentic Benchmark Report",
+        help="Title used for --pdf-report.",
+    )
     run_parser.set_defaults(func=run_benchmark)
 
     validate_parser = subparsers.add_parser("validate-config", help="Validate loop configuration CSV.")

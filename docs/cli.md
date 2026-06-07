@@ -39,7 +39,8 @@ Run the benchmark matrix over all experiment rows in a CSV config and all select
 python3 -m agentic_benchmark.cli run \
   --config configs/loop_configs.csv \
   --tasks data/humaneval/HumanEval.jsonl.gz \
-  --limit 10
+  --limit 10 \
+  --pdf-report
 ```
 
 Options:
@@ -54,6 +55,9 @@ Options:
 | `--verbose` | `false` | Print prompts and verbose loop details. |
 | `--copy-config` | `true` | Copy the config CSV into the result directory. |
 | `--no-copy-config` | `false` | Disable config snapshot copying. |
+| `--pdf-report` | `false` | Generate `overview.pdf` from this run's `summary.csv` after the benchmark completes. |
+| `--pdf-output` | run output directory | Optional PDF path or directory for `--pdf-report`. |
+| `--pdf-title` | `Agentic Benchmark Report` | Title used in the generated PDF report. |
 | `--provider` | `humaneval` | Deprecated; task provider is read from config rows. |
 
 Output:
@@ -113,6 +117,16 @@ Options:
 | `--summary` | required | Path to `summary.csv` from a benchmark run. |
 | `--output` | required | Destination PDF path, or an existing directory where `overview.pdf` is written. |
 | `--title` | `Agentic Benchmark Report` | Title printed on the PDF pages. |
+
+Generate the same PDF directly during a benchmark run:
+
+```bash
+python3 -m agentic_benchmark.cli run \
+  --config configs/loop_configs.csv \
+  --tasks HumanEval.jsonl.gz \
+  --limit 1 \
+  --pdf-report
+```
 
 Color rules:
 
