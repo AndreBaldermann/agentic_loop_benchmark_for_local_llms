@@ -20,6 +20,16 @@ class CliHelpTests(unittest.TestCase):
         ]:
             self.assertIn(command, help_text)
 
+    def test_interactive_help_lists_prompt_sources(self):
+        """Verify interactive --help exposes prompt input options."""
+        parser = build_parser()
+        with contextlib.redirect_stdout(io.StringIO()) as stdout, self.assertRaises(SystemExit) as cm:
+            parser.parse_args(["interactive", "--help"])
+        help_text = stdout.getvalue()
+        for option in ["--output-dir", "--verbose", "--prompt", "--prompt-file"]:
+            self.assertIn(option, help_text)
+        self.assertEqual(cm.exception.code, 0)
+
     def test_run_help_lists_core_options(self):
         """Verify run --help exposes the primary benchmark options."""
         parser = build_parser()

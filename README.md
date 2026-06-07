@@ -8,6 +8,9 @@ A local benchmark runner for comparing agentic Coder/Reviewer loop configuration
 
 ```bash
 python3 basis_agentic_coding_loop.py
+
+# Non-interactive task text also works and does not load HumanEval:
+python3 basis_agentic_coding_loop.py --prompt "Write a function that adds two numbers."
 ```
 
 ### Validate loop configurations

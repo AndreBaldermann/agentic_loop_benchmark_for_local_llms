@@ -18,10 +18,16 @@ If no subcommand is provided, the CLI defaults to `interactive` mode.
 
 ### `interactive`
 
-Run the legacy single-task Coder/Reviewer loop. The task is read from stdin and results are written to a timestamped directory.
+Run the legacy single-task Coder/Reviewer loop. The task is always treated as `task_id=interactive`/`source=interactive`; it is never loaded from HumanEval unless you explicitly use the `run` command. Task text can come from `--prompt`, `--prompt-file`, piped stdin, or a multi-line terminal prompt.
 
 ```bash
-python3 -m agentic_benchmark.cli interactive --output-dir results --verbose
+python3 -m agentic_benchmark.cli interactive \
+  --prompt "Write a function that adds two numbers." \
+  --output-dir results \
+  --verbose
+
+# Backwards-compatible default: no subcommand also means interactive.
+python3 basis_agentic_coding_loop.py --prompt "Write a function that adds two numbers."
 ```
 
 Options:
@@ -30,6 +36,8 @@ Options:
 |---|---:|---|
 | `--output-dir` | `results` | Base directory for generated result folders. |
 | `--verbose` | `false` | Print prompts and verbose loop details. |
+| `--prompt` | none | Inline task text for non-interactive usage. |
+| `--prompt-file` | none | Text file containing the task, useful for multi-line prompts. |
 
 ### `run`
 

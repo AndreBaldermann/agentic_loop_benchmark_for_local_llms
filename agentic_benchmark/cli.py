@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -54,6 +55,38 @@ def build_default_experiment() -> ExperimentConfig:
     )
 
 
+def read_interactive_task_text(args: argparse.Namespace) -> str:
+    """
+    Read the task text for interactive mode without falling back to benchmark tasks.
+
+    Args:
+        args, argparse.Namespace: parsed interactive CLI arguments with optional prompt sources.
+
+    Returns:
+        task_text, str: user-provided task text stripped of surrounding whitespace.
+    """
+    if args.prompt:
+        return str(args.prompt).strip()
+    if args.prompt_file:
+        return Path(args.prompt_file).read_text(encoding="utf-8").strip()
+
+    if not sys.stdin.isatty():
+        return sys.stdin.read().strip()
+
+    print("\nAufgabe für die Agenten. Mehrzeilige Eingabe ist erlaubt.")
+    print("Beenden mit einer leeren Zeile oder Ctrl-D:")
+    lines: list[str] = []
+    while True:
+        try:
+            line = input("> " if not lines else "| ")
+        except EOFError:
+            break
+        if not line and lines:
+            break
+        lines.append(line)
+    return "\n".join(lines).strip()
+
+
 def interactive(args: argparse.Namespace) -> int:
     """
     Run the legacy interactive single-task workflow.
@@ -64,7 +97,10 @@ def interactive(args: argparse.Namespace) -> int:
     Returns:
         exit_code, int, 0 or 1: process-style status code.
     """
-    task_text = input("\nAufgabe für die Agenten:\n> ").strip()
+    task_text = read_interactive_task_text(args)
+    if not task_text:
+        print("ERROR: interactive mode needs a non-empty task. Use stdin, --prompt, or --prompt-file.")
+        return 1
     task = BenchmarkTask(task_id="interactive", source="interactive", prompt=task_text)
     result = run_agentic_loop(task, build_default_experiment(), verbose=args.verbose)
     output_dir = Path(args.output_dir) / datetime.now().strftime("interactive_%Y%m%d_%H%M%S")
@@ -397,6 +433,8 @@ def build_parser() -> argparse.ArgumentParser:
     interactive_parser = subparsers.add_parser("interactive", help="Run the legacy single-task interactive loop.")
     interactive_parser.add_argument("--output-dir", default="results")
     interactive_parser.add_argument("--verbose", action="store_true")
+    interactive_parser.add_argument("--prompt", help="Task text for non-interactive single-task runs.")
+    interactive_parser.add_argument("--prompt-file", help="Path to a text file containing the interactive task.")
     interactive_parser.set_defaults(func=interactive)
 
     run_parser = subparsers.add_parser("run", help="Run a task-provider benchmark over all CSV configurations.")
@@ -450,6 +488,25 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def normalize_argv_for_default_interactive(argv: list[str] | None) -> list[str] | None:
+    """
+    Prefix interactive arguments when no explicit subcommand was supplied.
+
+    Args:
+        argv, list[str] | None: optional argument vector; None means sys.argv should be inspected.
+
+    Returns:
+        normalized_argv, list[str] | None: argv suitable for argparse, preserving top-level help.
+    """
+    raw_args = list(sys.argv[1:] if argv is None else argv)
+    command_names = {"interactive", "run", "validate-config", "list-tasks", "report-pdf", "write-sample-config"}
+    if not raw_args:
+        return ["interactive"]
+    if raw_args[0] in command_names or raw_args[0] in {"-h", "--help"}:
+        return raw_args
+    return ["interactive", *raw_args]
+
+
 def main(argv: list[str] | None = None) -> int:
     """
     CLI entry point used by both module execution and the compatibility script.
@@ -461,9 +518,7 @@ def main(argv: list[str] | None = None) -> int:
         exit_code, int, 0 or 1: process-style status code returned by the selected command.
     """
     parser = build_parser()
-    args = parser.parse_args(argv)
-    if not hasattr(args, "func"):
-        args = parser.parse_args(["interactive"] if argv is None else [*argv, "interactive"])
+    args = parser.parse_args(normalize_argv_for_default_interactive(argv))
     return args.func(args)
 
 
