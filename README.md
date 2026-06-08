@@ -39,7 +39,7 @@ Run the demo:
 ```bash
 python3 basis_agentic_coding_loop.py \
   --config configs/loop_configs.csv \
-  --prompt "Write a Python function add_two(x) that returns x + 2." \
+  --prompt "Write a Python function add(x, y) that returns x + y." \
   --pdf-report
 ```
 
