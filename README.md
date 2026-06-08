@@ -2,67 +2,164 @@
 
 A beginner-friendly local tool for trying and benchmarking **agentic Coder/Reviewer loops** with local Ollama models.
 
-The easiest entry point is **interactive mode**: write any programming task and run every Coder/Reviewer setup listed in `configs/loop_configs.csv` on that same prompt. When you want repeatable structured experiments later, use `run` with a task file such as HumanEval.
+## Friendly Start :-)
 
-## 1. First run: interactive mode
+### How to directly use it in Ubuntu:
 
-Use this first. You do **not** need a HumanEval file and you do **not** need to understand the benchmark runner yet. Interactive mode reads the same config CSV as the benchmark runner, so you can test any prompt against all Coder/Reviewer combinations listed in `configs/loop_configs.csv`.
+Prepare Environment:
 
-Very small checklist:
+```bash
+git clone https://github.com/AndreBaldermann/agentic_loop_benchmark_for_local_llms.git
+cd agentic_loop_benchmark_for_local_llms
+python -m venv .venv
+pip install -r requirements.txt
+```
 
-1. Download or clone this repository.
-2. Open a terminal in this folder.
-3. Make sure Ollama is running and the model names in `configs/loop_configs.csv` exist locally.
-4. Run one of the commands below.
+Now you need local llms. Install ollama if you dont have it, yet:
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+ollama --version
+```
+
+Install llms for running the demo without editing. Requires ca. 77 GB of memory:
+
+```bash
+ollama pull qwen3-coder-next
+ollama pull gemma4:26b-a4b-it-q4_K_M
+ollama pull deepseek-coder-v2
+ollama pull qwen2.5:32b
+ollama pull llama3.2:3b
+ollama pull llama3.2:1b
+ollama pull llama3.1:8b
+```
+
+Run the demo:
 
 ```bash
 python3 basis_agentic_coding_loop.py \
   --config configs/loop_configs.csv \
-  --prompt "Write a Python function add_two(x) that returns x + 2." \
+  --prompt "Write a Python function add(x, y) that returns x + y." \
   --pdf-report
 ```
 
-That runs the prompt once for every row in `configs/loop_configs.csv` and writes `overview.pdf` next to the interactive CSV results. The equivalent module command also works without explicitly writing `interactive`:
+Open the PDF-File under:
 
-```bash
-python3 -m agentic_benchmark.cli \
-  --config configs/loop_configs.csv \
-  --prompt "Write a Python function add_two(x) that returns x + 2." \
+```text
+report/interactive_{date_time}/summary.pdf
+```
+### How to directly use it on Windows 10 / 11
+
+Open **PowerShell** and clone the repository:
+
+```powershell
+git clone https://github.com/AndreBaldermann/agentic_loop_benchmark_for_local_llms.git
+cd agentic_loop_benchmark_for_local_llms
+```
+
+Create and activate a virtual environment:
+
+```powershell
+python -m venv .venv
+.venv\Scripts\activate
+```
+
+Install dependencies:
+
+```powershell
+pip install -r requirements.txt
+```
+
+Now you need local LLMs. Install Ollama if you do not have it yet:
+
+1. Download and install Ollama from:
+   https://ollama.com/download/windows
+
+2. Verify the installation:
+
+```powershell
+ollama --version
+```
+
+Install the models required for the demo (approximately 77 GB disk space):
+
+```powershell
+ollama pull qwen3-coder-next
+ollama pull gemma4:26b-a4b-it-q4_K_M
+ollama pull deepseek-coder-v2
+ollama pull qwen2.5:32b
+ollama pull llama3.2:3b
+ollama pull llama3.2:1b
+ollama pull llama3.1:8b
+```
+
+Run the demo:
+
+```powershell
+python basis_agentic_coding_loop.py `
+  --config configs/loop_configs.csv `
+  --prompt "Write a Python function add(x, y) that returns x + y." `
   --pdf-report
 ```
 
-If you only want to try one row, add `--experiment-id`:
+Open the generated PDF report:
 
-```bash
-python3 basis_agentic_coding_loop.py \
-  --config configs/loop_configs.csv \
-  --experiment-id qwen_self_review \
-  --prompt "Write a Python function add_two(x) that returns x + 2."
+```text
+report\interactive_{date_time}\summary.pdf
 ```
 
-For longer prompts, write the task into a text file and pass it in:
+## Friendly config
 
-```bash
-python3 basis_agentic_coding_loop.py \
-  --config configs/loop_configs.csv \
-  --prompt-file my_task.txt
-```
+Open the config file in:
 
-You can see or edit available agent combinations here:
-
-```bash
+```text
 configs/loop_configs.csv
 ```
 
-Important columns in that CSV:
+It should be largely self-explanatory:
 
-- `experiment_id`: the short name you can optionally pass to `--experiment-id`
-- `coder_model`: Ollama model used as the Coder
-- `reviewer_model`: Ollama model used as the Reviewer; leave empty for Coder-only runs
-- `max_rounds`: maximum Coder/Reviewer loop iterations
-- `feedback_mode`, `stop_policy`, `evaluator`: loop behavior
+The agentic loop currently consists of a coder and a reviewer.
+Each row is a different experiment where you define specifics about the coder and reviewer behavior
 
-Interactive results are written to `results/interactive_YYYYMMDD_HHMMSS/` and include generated code, history, `summary.csv`, `agent_calls.csv`, and `overview.pdf` when `--pdf-report` is used.
+Tokens? What's a token? 
+LLMs neither predict the next letter nor the next word. They predict reusable letter combinations. Like the word "predict" 
+consists of 2 tokens: "pre" and "dict". For source code the tokens are shorter than for natural language. 
+
+The config file:
+
+| Field                | Description                                                                                                                        |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| experiment_id        | Just an arbitrary name you can choose                                                                                              |
+| task_provider        | Relevant for "benchmark run" command. HumanEval is a standard test set of 164 tasks by OpenAI.                                     |
+| coder_model          | Put in the LLMs you want to test. Find options on your system by executing command `ollama list`.                                  |
+| reviewer_model       | Analog to the coder_model, see above.                                                                                              |
+| coder_ctx            | Coder context window. 32k tokens is a good start. Most local LLMs should be more capable.                                          |
+| reviewer_ctx         | Reviewer context window.                                                                                                           |
+| coder_num_predict    | Maximum length of response before model stops execution. Good for short simple codes.                                              |
+| reviewer_num_predict | Analog to the coder_num_predict, see above.                                                                                        |
+| coder_temperature    | Creativity of the LLM. Also may lead to hallucinations. For the coder a value of 0.1 to 0.3 is generally considered good practice. |
+| reviewer_temperature | Analog to the coder_num_predict, see above.                                                                                        |
+| max_rounds           | Maximum number of unsuccessful coder/reviewer interactions before the test is forcefully stopped.                                  |
+| max_same_code_rounds | Like in chess. Repeat the same move twice, game over.                                                                              |
+
+## 3. Some Pics
+
+### Example 1: PDF Report of a variety of LLMs solving HumanEval Benchmark from OpenAI
+
+![PDF Report of a variety of LLMs solving HumanEval Benchmark from OpenAI](docs/pictures/example_1.png)
+
+### Example 2: PDF Report of qwen coder solving HumanEval Benchmark from OpenAI at different temperatures
+
+![PDF Report of qwen coder solving HumanEval Benchmark from OpenAI at different temperatures](docs/pictures/example_2.png)
+
+### Example 3:Config File
+
+![Config File](docs/pictures/example_3.png)
+
+### Example 4: Full program output of a single agentic experiment
+
+![Full program output of a single agentic experiment](docs/pictures/example_4.png)
+
 
 ## 2. Validate loop configurations
 
@@ -100,7 +197,7 @@ python3 -m agentic_benchmark.cli report-pdf \
   --output reports/overview.pdf
 ```
 
-The PDF overview contains multiple matrix tables with the same task/experiment layout: `R/TCT/TRT` for rounds and generated tokens, `TTNL/TTC/TTR` for execution time without model loading, `TTL/TLC/TLR` for load time, `ATPS/CTPS/RTPS` for generated-token throughput, `FC/TO/ERR` for failures, `SYN/APP/EVAL` for quality signals, and `Q/QPS/QPK` for simple efficiency views.
+The PDF overview subdivides every task/experiment cell into `R` (rounds/max rounds), `TCT` (total generated Coder tokens), and `TRT` (total generated Reviewer tokens).
 
 ## CLI reference
 
