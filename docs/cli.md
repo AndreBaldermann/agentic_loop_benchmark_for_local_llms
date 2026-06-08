@@ -18,22 +18,29 @@ If no subcommand is provided, the CLI defaults to `interactive` mode.
 
 ### `interactive`
 
-Run the legacy single-task Coder/Reviewer loop. The task is always treated as `task_id=interactive`/`source=interactive`; it is never loaded from HumanEval unless you explicitly use the `run` command. Task text can come from `--prompt`, `--prompt-file`, piped stdin, or a multi-line terminal prompt.
+Run one user-provided task across experiment rows from the same config CSV used by structured benchmarks. The task is always treated as `task_id=interactive`/`source=interactive`; it is never loaded from HumanEval unless you explicitly use the `run` command. Task text can come from `--prompt`, `--prompt-file`, piped stdin, or a multi-line terminal prompt.
 
 ```bash
 python3 -m agentic_benchmark.cli interactive \
+  --config configs/loop_configs.csv \
   --prompt "Write a function that adds two numbers." \
   --output-dir results \
   --verbose
 
 # Backwards-compatible default: no subcommand also means interactive.
-python3 basis_agentic_coding_loop.py --prompt "Write a function that adds two numbers."
+python3 basis_agentic_coding_loop.py \
+  --config configs/loop_configs.csv \
+  --prompt "Write a function that adds two numbers."
 ```
+
+If `--experiment-id` is omitted, every row from `--config` is run against the same prompt. Add `--experiment-id qwen_self_review` only when you want to try one row. This is the easiest way to try arbitrary prompts with arbitrary Coder/Reviewer combinations before learning the structured `run` command.
 
 Options:
 
 | Option | Default | Meaning |
 |---|---:|---|
+| `--config` | `configs/loop_configs.csv` | Experiment configuration CSV used to choose Coder/Reviewer settings. |
+| `--experiment-id` | all config rows | Optional experiment row filter. |
 | `--output-dir` | `results` | Base directory for generated result folders. |
 | `--verbose` | `false` | Print prompts and verbose loop details. |
 | `--prompt` | none | Inline task text for non-interactive usage. |

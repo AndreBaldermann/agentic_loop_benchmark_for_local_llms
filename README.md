@@ -1,25 +1,70 @@
 # agentic_loop_benchmark_for_local_llms
 
-A local benchmark runner for comparing agentic Coder/Reviewer loop configurations across interchangeable task providers such as HumanEval-style JSONL files.
+A beginner-friendly local tool for trying and benchmarking **agentic Coder/Reviewer loops** with local Ollama models.
 
-## Modes
+The easiest entry point is **interactive mode**: write any programming task and run every Coder/Reviewer setup listed in `configs/loop_configs.csv` on that same prompt. When you want repeatable structured experiments later, use `run` with a task file such as HumanEval.
 
-### Interactive compatibility mode
+## 1. First run: interactive mode
+
+Use this first. You do **not** need a HumanEval file and you do **not** need to understand the benchmark runner yet. Interactive mode reads the same config CSV as the benchmark runner, so you can test any prompt against all Coder/Reviewer combinations listed in `configs/loop_configs.csv`.
+
+Very small checklist:
+
+1. Download or clone this repository.
+2. Open a terminal in this folder.
+3. Make sure Ollama is running and the model names in `configs/loop_configs.csv` exist locally.
+4. Run one of the commands below.
 
 ```bash
-python3 basis_agentic_coding_loop.py
-
-# Non-interactive task text also works and does not load HumanEval:
-python3 basis_agentic_coding_loop.py --prompt "Write a function that adds two numbers."
+python3 basis_agentic_coding_loop.py \
+  --config configs/loop_configs.csv \
+  --prompt "Write a Python function add_two(x) that returns x + 2."
 ```
 
-### Validate loop configurations
+That runs the prompt once for every row in `configs/loop_configs.csv`. If you only want to try one row, add `--experiment-id`:
+
+```bash
+python3 basis_agentic_coding_loop.py \
+  --config configs/loop_configs.csv \
+  --experiment-id qwen_self_review \
+  --prompt "Write a Python function add_two(x) that returns x + 2."
+```
+
+For longer prompts, write the task into a text file and pass it in:
+
+```bash
+python3 basis_agentic_coding_loop.py \
+  --config configs/loop_configs.csv \
+  --prompt-file my_task.txt
+```
+
+You can see or edit available agent combinations here:
+
+```bash
+configs/loop_configs.csv
+```
+
+Important columns in that CSV:
+
+- `experiment_id`: the short name you can optionally pass to `--experiment-id`
+- `coder_model`: Ollama model used as the Coder
+- `reviewer_model`: Ollama model used as the Reviewer; leave empty for Coder-only runs
+- `max_rounds`: maximum Coder/Reviewer loop iterations
+- `feedback_mode`, `stop_policy`, `evaluator`: loop behavior
+
+Interactive results are written to `results/interactive_YYYYMMDD_HHMMSS/` and include generated code, history, `summary.csv`, and `agent_calls.csv`.
+
+## 2. Validate loop configurations
+
+Before running many experiments, check that the CSV is valid:
 
 ```bash
 python3 -m agentic_benchmark.cli validate-config --config configs/loop_configs.csv
 ```
 
-### Run a benchmark
+## 3. Structured benchmark run
+
+Use this when you want repeatable tests over a task corpus such as HumanEval:
 
 ```bash
 python3 -m agentic_benchmark.cli run \
@@ -34,21 +79,15 @@ The benchmark writes a timestamped result directory containing:
 - `summary.csv`: one row per task/configuration/repetition
 - `agent_calls.csv`: one row per concrete Coder or Reviewer model call
 - `artifacts/`: final generated code and per-run JSON history
+- `overview.pdf` when `--pdf-report` is used
 
-### Generate overview PDF
+## 4. Generate overview PDF later
 
 ```bash
 python3 -m agentic_benchmark.cli report-pdf \
   --summary results/run_YYYYMMDD_HHMMSS/summary.csv \
   --agent-calls results/run_YYYYMMDD_HHMMSS/agent_calls.csv \
   --output reports/overview.pdf
-
-# Or generate overview.pdf directly after a benchmark run:
-python3 -m agentic_benchmark.cli run \
-  --config configs/loop_configs.csv \
-  --tasks HumanEval.jsonl.gz \
-  --limit 1 \
-  --pdf-report
 ```
 
 The PDF overview subdivides every task/experiment cell into `R` (rounds/max rounds), `TCT` (total generated Coder tokens), and `TRT` (total generated Reviewer tokens).
@@ -57,12 +96,6 @@ The PDF overview subdivides every task/experiment cell into `R` (rounds/max roun
 
 See [docs/cli.md](docs/cli.md) for the full command reference, option descriptions, examples, and the CLI help smoke-test command.
 
-## Configuration CSV
-
-`configs/loop_configs.csv` defines Coder/Reviewer model pairs, context sizes, per-role timeouts, temperatures, max rounds, feedback mode, stop policy, load mode, repetitions, and evaluator.
-
-Reviewer models are optional, so Coder-only loops can be compared against Coder/Reviewer loops.
-
 ## Evaluators
 
 The benchmark focuses on agentic-loop behavior, timing, tokens, and interaction metrics. Evaluators are optional and configurable per row:
@@ -70,7 +103,6 @@ The benchmark focuses on agentic-loop behavior, timing, tokens, and interaction 
 - `none`: do not evaluate generated code
 - `syntax`: run a local Python syntax check
 - `humaneval`: run HumanEval tests in a subprocess with timeout
-
 
 ## Failure handling and fair loading
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import csv
 import sys
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
@@ -11,48 +12,10 @@ from .loop_runner import print_interactive_summary, run_agentic_loop
 from .ollama_client import unload_agent, warm_agent
 from .metrics import ResultsWriter
 from .reporting.pdf import generate_overview_pdf
-from .models import AgentConfig, BenchmarkTask, ExperimentConfig
+from .models import BenchmarkTask, ExperimentConfig
 from .task_providers import load_tasks
 
 DEFAULT_CONFIG = "configs/loop_configs.csv"
-
-
-def build_default_experiment() -> ExperimentConfig:
-    """
-    Build the default interactive benchmark configuration.
-
-    Args:
-        None.
-
-    Returns:
-        experiment, ExperimentConfig: default Coder/Reviewer setup for interactive runs.
-    """
-    coder = AgentConfig(
-        role="Coder",
-        model="qwen3-coder-next:latest",
-        num_ctx=32768,
-        temperature=0.1,
-        num_predict=4096,
-    )
-    reviewer = AgentConfig(
-        role="Reviewer",
-        model="qwen3-coder-next:latest",
-        num_ctx=16384,
-        temperature=0.0,
-        num_predict=2048,
-        json_mode=True,
-    )
-    return ExperimentConfig(
-        experiment_id="interactive_default",
-        task_provider="interactive",
-        coder=coder,
-        reviewer=reviewer,
-        max_rounds=50,
-        max_same_code_rounds=2,
-        feedback_mode="compact_json",
-        stop_policy="reviewer_approved_and_syntax_ok",
-        evaluator="syntax",
-    )
 
 
 def read_interactive_task_text(args: argparse.Namespace) -> str:
@@ -87,12 +50,44 @@ def read_interactive_task_text(args: argparse.Namespace) -> str:
     return "\n".join(lines).strip()
 
 
-def interactive(args: argparse.Namespace) -> int:
+def load_interactive_experiments(args: argparse.Namespace) -> list[ExperimentConfig]:
     """
-    Run the legacy interactive single-task workflow.
+    Load experiment configurations used by interactive mode.
 
     Args:
-        args, argparse.Namespace: parsed CLI arguments containing output_dir and verbose.
+        args, argparse.Namespace: parsed interactive CLI arguments containing config and optional experiment_id.
+
+    Returns:
+        experiments, list[ExperimentConfig]: selected config rows adjusted to use the interactive task provider.
+
+    Raises:
+        ValueError: when the config is invalid, empty, or the requested experiment_id is missing.
+    """
+    configs = load_experiment_configs(args.config)
+    errors = validate_experiment_configs(configs)
+    if errors:
+        raise ValueError("Invalid interactive config: " + "; ".join(errors))
+    if not configs:
+        raise ValueError(f"No experiment configurations found in {args.config}")
+
+    selected_configs = configs
+    if args.experiment_id:
+        selected_configs = [config for config in configs if config.experiment_id == args.experiment_id]
+        if not selected_configs:
+            available = ", ".join(config.experiment_id for config in configs)
+            raise ValueError(f"Unknown experiment_id for interactive mode: {args.experiment_id}. Available: {available}")
+
+    # The model/loop settings come from CSV rows, but the task itself is a
+    # user-provided interactive prompt rather than a provider-backed benchmark task.
+    return [replace(config, task_provider="interactive") for config in selected_configs]
+
+
+def interactive(args: argparse.Namespace) -> int:
+    """
+    Run the interactive single-task workflow over selected config rows.
+
+    Args:
+        args, argparse.Namespace: parsed CLI arguments containing config, prompt, output_dir, and verbose.
 
     Returns:
         exit_code, int, 0 or 1: process-style status code.
@@ -101,16 +96,36 @@ def interactive(args: argparse.Namespace) -> int:
     if not task_text:
         print("ERROR: interactive mode needs a non-empty task. Use stdin, --prompt, or --prompt-file.")
         return 1
+    try:
+        experiments = load_interactive_experiments(args)
+    except ValueError as exc:
+        print(f"ERROR: {exc}")
+        return 1
+
     task = BenchmarkTask(task_id="interactive", source="interactive", prompt=task_text)
-    result = run_agentic_loop(task, build_default_experiment(), verbose=args.verbose)
     output_dir = Path(args.output_dir) / datetime.now().strftime("interactive_%Y%m%d_%H%M%S")
     writer = ResultsWriter(output_dir)
-    writer.write_result(result)
-    print_interactive_summary(result)
-    print(f"\nFinaler Code gespeichert in:\n{result.final_code_file}")
-    print(f"\nHistorie gespeichert in:\n{result.history_file}")
-    print(f"\nSummary CSV:\n{writer.summary_path}")
-    print(f"\nAgent Calls CSV:\n{writer.agent_calls_path}")
+    warmed_models: set[str] = set()
+    total_runs = 0
+
+    for experiment in experiments:
+        for repetition in range(1, experiment.repetitions + 1):
+            total_runs += 1
+            print(
+                f"[{total_runs}] interactive experiment={experiment.experiment_id} "
+                f"rep={repetition}/{experiment.repetitions}"
+            )
+            prepare_load_mode(experiment, warmed_models)
+            result = run_agentic_loop(task, experiment, repetition=repetition, verbose=args.verbose)
+            writer.write_result(result)
+            print_interactive_summary(result)
+            print(f"\nFinaler Code gespeichert in:\n{result.final_code_file}")
+            print(f"Historie gespeichert in:\n{result.history_file}\n")
+
+    print(f"\nInteractive runs completed: {total_runs}")
+    print(f"Summary CSV:\n{writer.summary_path}")
+    print(f"Agent Calls CSV:\n{writer.agent_calls_path}")
+    print(f"Artifacts directory:\n{writer.artifacts_dir}")
     return 0
 
 
@@ -431,6 +446,8 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=False)
 
     interactive_parser = subparsers.add_parser("interactive", help="Run the legacy single-task interactive loop.")
+    interactive_parser.add_argument("--config", default=DEFAULT_CONFIG, help="Experiment configuration CSV used to choose Coder/Reviewer settings.")
+    interactive_parser.add_argument("--experiment-id", help="Optional experiment row filter; defaults to all rows from --config.")
     interactive_parser.add_argument("--output-dir", default="results")
     interactive_parser.add_argument("--verbose", action="store_true")
     interactive_parser.add_argument("--prompt", help="Task text for non-interactive single-task runs.")
