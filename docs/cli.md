@@ -122,7 +122,7 @@ Options:
 
 ### `report-pdf`
 
-Generate a first overview PDF from a benchmark `summary.csv`. Rows are `task_id`, columns are `experiment_id`, and every experiment/task cell is subdivided into `R` (`rounds_used / max_rounds`), `TCT` (total generated Coder tokens), and `TRT` (total generated Reviewer tokens).
+Generate an overview PDF from a benchmark `summary.csv`. Rows are `task_id` and columns are `experiment_id`. The report contains several matrices with the same layout: `R/TCT/TRT` for rounds and generated tokens, `TTNL/TTC/TTR` for execution time without model loading, `TTL/TLC/TLR` for load time, `ATPS/CTPS/RTPS` for generated-token throughput, `FC/TO/ERR` for failures, `SYN/APP/EVAL` for quality signals, and `Q/QPS/QPK` for simple efficiency views.
 
 ```bash
 python3 -m agentic_benchmark.cli report-pdf \
@@ -167,6 +167,13 @@ Color rules:
 - `max_rounds_reached`: blue.
 - `TCT` and `TRT`: minimum positive token total is green and maximum positive token total is red.
 - `TCT` or `TRT` with `0` tokens: blue, which highlights timeouts, failures, or disabled roles.
+- `TTNL`, `TTC`, and `TTR`: minimum positive execution time is green and maximum positive execution time is red.
+- `TTNL`, `TTC`, or `TTR` with `0` seconds: blue, which highlights missing timing data, failures, or disabled roles.
+- `TTL`, `TLC`, and `TLR`: minimum positive loading time is green and maximum positive loading time is red; `0` seconds is blue.
+- `ATPS`, `CTPS`, and `RTPS`: highest throughput is green, lowest positive throughput is red, and `0` is blue.
+- `FC`, `TO`, and `ERR`: zero failures is green; larger failure, timeout, or distinct-error counts move toward red.
+- `SYN`, `APP`, and `EVAL`: higher quality rates are greener; missing values are gray.
+- `Q`, `QPS`, and `QPK`: higher simple quality/efficiency scores are greener; missing quality is gray and zero efficiency is blue.
 
 ### `write-sample-config`
 

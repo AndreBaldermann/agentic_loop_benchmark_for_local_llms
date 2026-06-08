@@ -16,6 +16,12 @@ TASK_COL_WIDTH = 150.0
 MIN_EXPERIMENT_GROUP_WIDTH = 78.0
 MAX_EXPERIMENT_GROUP_WIDTH = 132.0
 SUB_COLUMNS = ("R", "TCT", "TRT")
+TIME_SUB_COLUMNS = ("TTNL", "TTC", "TTR")
+LOAD_SUB_COLUMNS = ("TTL", "TLC", "TLR")
+TPS_SUB_COLUMNS = ("ATPS", "CTPS", "RTPS")
+RELIABILITY_SUB_COLUMNS = ("FC", "TO", "ERR")
+QUALITY_SUB_COLUMNS = ("SYN", "APP", "EVAL")
+EFFICIENCY_SUB_COLUMNS = ("Q", "QPS", "QPK")
 GREEN = (0.35, 0.82, 0.35)
 RED = (0.90, 0.25, 0.25)
 GRAY = (0.66, 0.66, 0.66)
@@ -38,6 +44,18 @@ class OverviewCell:
     repetitions: int
     coder_tokens: float = 0.0
     reviewer_tokens: float = 0.0
+    total_execution_s: float = 0.0
+    coder_execution_s: float = 0.0
+    reviewer_execution_s: float = 0.0
+    total_load_s: float = 0.0
+    coder_load_s: float = 0.0
+    reviewer_load_s: float = 0.0
+    failed_calls: float = 0.0
+    timeout_calls: float = 0.0
+    error_type_count: float = 0.0
+    syntax_ok_rate: float | None = None
+    approval_rate: float | None = None
+    evaluator_pass_rate: float | None = None
 
     @property
     def rounds_label(self) -> str:
@@ -68,6 +86,245 @@ class OverviewCell:
             label, str: rounded total Reviewer tokens for the task/experiment.
         """
         return str(int(round(self.reviewer_tokens)))
+
+    def total_execution_label(self) -> str:
+        """
+        Render total no-load model execution time.
+
+        Returns:
+            label, str: total Coder+Reviewer execution seconds excluding model loading.
+        """
+        return seconds_label(self.total_execution_s)
+
+    def coder_execution_label(self) -> str:
+        """
+        Render Coder no-load model execution time.
+
+        Returns:
+            label, str: Coder execution seconds excluding model loading.
+        """
+        return seconds_label(self.coder_execution_s)
+
+    def reviewer_execution_label(self) -> str:
+        """
+        Render Reviewer no-load model execution time.
+
+        Returns:
+            label, str: Reviewer execution seconds excluding model loading.
+        """
+        return seconds_label(self.reviewer_execution_s)
+
+    def total_load_label(self) -> str:
+        """
+        Render total model loading time.
+
+        Returns:
+            label, str: total Coder+Reviewer load seconds.
+        """
+        return seconds_label(self.total_load_s)
+
+    def coder_load_label(self) -> str:
+        """
+        Render Coder model loading time.
+
+        Returns:
+            label, str: Coder load seconds.
+        """
+        return seconds_label(self.coder_load_s)
+
+    def reviewer_load_label(self) -> str:
+        """
+        Render Reviewer model loading time.
+
+        Returns:
+            label, str: Reviewer load seconds.
+        """
+        return seconds_label(self.reviewer_load_s)
+
+    def combined_tps_label(self) -> str:
+        """
+        Render combined generated-token throughput.
+
+        Returns:
+            label, str: Coder+Reviewer output tokens per no-load execution second.
+        """
+        return rate_label(self.combined_tps)
+
+    def coder_tps_label(self) -> str:
+        """
+        Render Coder generated-token throughput.
+
+        Returns:
+            label, str: Coder output tokens per no-load execution second.
+        """
+        return rate_label(self.coder_tps)
+
+    def reviewer_tps_label(self) -> str:
+        """
+        Render Reviewer generated-token throughput.
+
+        Returns:
+            label, str: Reviewer output tokens per no-load execution second.
+        """
+        return rate_label(self.reviewer_tps)
+
+    def failed_calls_label(self) -> str:
+        """
+        Render failed model call count.
+
+        Returns:
+            label, str: rounded failed call count.
+        """
+        return count_label(self.failed_calls)
+
+    def timeout_calls_label(self) -> str:
+        """
+        Render timeout call count.
+
+        Returns:
+            label, str: rounded timeout count.
+        """
+        return count_label(self.timeout_calls)
+
+    def error_type_count_label(self) -> str:
+        """
+        Render distinct error type count.
+
+        Returns:
+            label, str: rounded distinct error type count.
+        """
+        return count_label(self.error_type_count)
+
+    def syntax_rate_label(self) -> str:
+        """
+        Render syntax success rate.
+
+        Returns:
+            label, str: percent-like syntax success rate or dash when unknown.
+        """
+        return percent_label(self.syntax_ok_rate)
+
+    def approval_rate_label(self) -> str:
+        """
+        Render reviewer approval rate.
+
+        Returns:
+            label, str: percent-like approval rate or dash when unknown.
+        """
+        return percent_label(self.approval_rate)
+
+    def evaluator_pass_rate_label(self) -> str:
+        """
+        Render evaluator pass rate.
+
+        Returns:
+            label, str: percent-like evaluator pass rate or dash when unknown.
+        """
+        return percent_label(self.evaluator_pass_rate)
+
+    def quality_score_label(self) -> str:
+        """
+        Render combined quality score.
+
+        Returns:
+            label, str: average of available syntax/approval/evaluator rates.
+        """
+        return percent_label(self.quality_score)
+
+    def quality_per_second_label(self) -> str:
+        """
+        Render quality score per no-load execution second.
+
+        Returns:
+            label, str: quality points per second.
+        """
+        return rate_label(self.quality_per_second)
+
+    def quality_per_1k_tokens_label(self) -> str:
+        """
+        Render quality score per thousand generated tokens.
+
+        Returns:
+            label, str: quality points per 1k generated output tokens.
+        """
+        return rate_label(self.quality_per_1k_tokens)
+
+    @property
+    def combined_output_tokens(self) -> float:
+        """
+        Return generated Coder plus Reviewer tokens.
+
+        Returns:
+            tokens, float, >= 0.0: total generated output tokens.
+        """
+        return self.coder_tokens + self.reviewer_tokens
+
+    @property
+    def combined_tps(self) -> float:
+        """
+        Return combined generated tokens per no-load execution second.
+
+        Returns:
+            tokens_per_second, float, >= 0.0: throughput or 0.0 when timing is missing.
+        """
+        return safe_divide(self.combined_output_tokens, self.total_execution_s)
+
+    @property
+    def coder_tps(self) -> float:
+        """
+        Return Coder generated tokens per Coder no-load execution second.
+
+        Returns:
+            tokens_per_second, float, >= 0.0: Coder throughput or 0.0 when timing is missing.
+        """
+        return safe_divide(self.coder_tokens, self.coder_execution_s)
+
+    @property
+    def reviewer_tps(self) -> float:
+        """
+        Return Reviewer generated tokens per Reviewer no-load execution second.
+
+        Returns:
+            tokens_per_second, float, >= 0.0: Reviewer throughput or 0.0 when timing is missing.
+        """
+        return safe_divide(self.reviewer_tokens, self.reviewer_execution_s)
+
+    @property
+    def quality_score(self) -> float | None:
+        """
+        Return average quality across available quality indicators.
+
+        Returns:
+            score, float | None: average of available rates in 0.0..1.0, or None when unknown.
+        """
+        values = [
+            value
+            for value in (self.syntax_ok_rate, self.approval_rate, self.evaluator_pass_rate)
+            if value is not None
+        ]
+        if not values:
+            return None
+        return average(values)
+
+    @property
+    def quality_per_second(self) -> float:
+        """
+        Return quality score per no-load execution second.
+
+        Returns:
+            score_per_second, float, >= 0.0: quality/time efficiency or 0.0 when unavailable.
+        """
+        return safe_divide(self.quality_score or 0.0, self.total_execution_s)
+
+    @property
+    def quality_per_1k_tokens(self) -> float:
+        """
+        Return quality score per thousand generated output tokens.
+
+        Returns:
+            score_per_1k_tokens, float, >= 0.0: quality/token efficiency or 0.0 when unavailable.
+        """
+        return safe_divide((self.quality_score or 0.0) * 1000.0, self.combined_output_tokens)
 
     @property
     def label(self) -> str:
@@ -275,6 +532,89 @@ def truncate_text(text: str, max_chars: int) -> str:
     return text[: max(1, max_chars - 1)] + "…"
 
 
+def seconds_label(value: float) -> str:
+    """
+    Render seconds compactly for dense PDF table cells.
+
+    Args:
+        value, float, >= 0.0: elapsed seconds.
+
+    Returns:
+        label, str: seconds rounded to two decimals for small values, one decimal for larger values.
+    """
+    if value <= 0:
+        return "0"
+    if value < 10:
+        return f"{value:.2f}".rstrip("0").rstrip(".")
+    return f"{value:.1f}".rstrip("0").rstrip(".")
+
+
+def count_label(value: float) -> str:
+    """
+    Render count-like metrics compactly.
+
+    Args:
+        value, float, >= 0.0: count value that may be averaged over repetitions.
+
+    Returns:
+        label, str: integer-like label or one decimal place for fractional averages.
+    """
+    rounded = round(value)
+    if abs(value - rounded) < 0.05:
+        return str(int(rounded))
+    return f"{value:.1f}".rstrip("0").rstrip(".")
+
+
+def rate_label(value: float) -> str:
+    """
+    Render rate-like metrics compactly.
+
+    Args:
+        value, float, >= 0.0: rate value.
+
+    Returns:
+        label, str: compact rate label.
+    """
+    if value <= 0:
+        return "0"
+    if value < 10:
+        return f"{value:.2f}".rstrip("0").rstrip(".")
+    if value < 100:
+        return f"{value:.1f}".rstrip("0").rstrip(".")
+    return str(int(round(value)))
+
+
+def percent_label(value: float | None) -> str:
+    """
+    Render a 0.0..1.0 rate as a dense table value.
+
+    Args:
+        value, float | None: quality rate or None when unavailable.
+
+    Returns:
+        label, str: percentage without the percent sign, or dash when unknown.
+    """
+    if value is None:
+        return "-"
+    return str(int(round(100 * value)))
+
+
+def safe_divide(numerator: float, denominator: float) -> float:
+    """
+    Divide numeric values with a zero-denominator fallback.
+
+    Args:
+        numerator, float: numerator value.
+        denominator, float: denominator value.
+
+    Returns:
+        quotient, float, >= 0.0: numerator / denominator or 0.0.
+    """
+    if denominator <= 0:
+        return 0.0
+    return max(0.0, numerator / denominator)
+
+
 def parse_int(value: Any, default: int = 0) -> int:
     """
     Parse an integer value from CSV data.
@@ -323,6 +663,87 @@ def parse_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
+def parse_bool_rate(value: Any) -> float | None:
+    """
+    Parse CSV truth values into numeric quality rates.
+
+    Args:
+        value, Any: CSV value such as True/False, 1/0, yes/no, or empty.
+
+    Returns:
+        rate, float | None: 1.0 for truthy, 0.0 for falsey, None when missing.
+    """
+    if value in (None, ""):
+        return None
+    normalized = str(value).strip().lower()
+    if normalized in {"true", "1", "yes", "y", "pass", "passed"}:
+        return 1.0
+    if normalized in {"false", "0", "no", "n", "fail", "failed"}:
+        return 0.0
+    return None
+
+
+def average_optional(values: list[float | None]) -> float | None:
+    """
+    Average optional numeric rates while ignoring unknown values.
+
+    Args:
+        values, list[float | None]: possibly missing rates.
+
+    Returns:
+        average_value, float | None: arithmetic mean of known values, or None.
+    """
+    known = [value for value in values if value is not None]
+    if not known:
+        return None
+    return average(known)
+
+
+def latest_bool_rate(rows: list[dict[str, str]], key: str) -> float | None:
+    """
+    Read the last available boolean rate from ordered agent-call rows.
+
+    Args:
+        rows, list[dict[str, str]]: rows for one logical attempt.
+        key, str: boolean CSV field to inspect.
+
+    Returns:
+        rate, float | None: last parsed rate, or None when all rows are empty.
+    """
+    for row in reversed(rows):
+        rate = parse_bool_rate(row.get(key))
+        if rate is not None:
+            return rate
+    return None
+
+
+def row_error_type(row: dict[str, str]) -> str:
+    """
+    Return a normalized error type from an agent call row.
+
+    Args:
+        row, dict[str, str]: agent_calls.csv row.
+
+    Returns:
+        error_type, str: normalized error type, or empty string when absent.
+    """
+    return str(row.get("error_type") or "").strip()
+
+
+def row_is_timeout(row: dict[str, str]) -> bool:
+    """
+    Detect timeout-like failed calls from error type/message fields.
+
+    Args:
+        row, dict[str, str]: agent_calls.csv row.
+
+    Returns:
+        is_timeout, bool: True when the row looks like a timeout failure.
+    """
+    text = f"{row.get('error_type', '')} {row.get('error_message', '')}".lower()
+    return "timeout" in text or "timed out" in text
+
+
 def row_identity(row: dict[str, str]) -> tuple[str, str]:
     """
     Build a stable identity for one logical benchmark attempt.
@@ -348,6 +769,36 @@ def row_has_value(row: dict[str, str], key: str) -> bool:
         has_value, bool: True when the field exists and is not an empty string.
     """
     return row.get(key, "") not in ("", None)
+
+
+def execution_value_for_role(row: dict[str, str], role: str | None = None) -> float:
+    """
+    Read no-load model execution seconds from a CSV row.
+
+    Args:
+        row, dict[str, str]: summary.csv or agent_calls.csv row.
+        role, str | None: optional role filter; use Coder, Reviewer, or None for totals.
+
+    Returns:
+        seconds, float, >= 0.0: prompt-evaluation plus generation time, excluding model loading.
+    """
+    if role is not None and row.get("agent_role", "").lower() not in ("", role.lower()):
+        return 0.0
+
+    # agent_calls.csv stores Ollama's load_duration_s separately. The no-load
+    # execution invariant is prompt_eval_duration_s + eval_duration_s.
+    prompt_eval_s = parse_float(row.get("prompt_eval_duration_s"), 0.0)
+    eval_s = parse_float(row.get("eval_duration_s"), 0.0)
+    if prompt_eval_s or eval_s:
+        return prompt_eval_s + eval_s
+
+    if role is None:
+        return parse_float(row.get("total_model_execution_s"), 0.0)
+
+    normalized_role = role.lower()
+    wallclock_s = parse_float(row.get(f"{normalized_role}_wallclock_s"), 0.0)
+    load_s = parse_float(row.get(f"{normalized_role}_load_duration_s"), 0.0)
+    return max(0.0, wallclock_s - load_s)
 
 
 def token_value_for_role(row: dict[str, str], role: str) -> float:
@@ -406,6 +857,21 @@ def aggregate_summary_bucket(bucket: list[dict[str, str]]) -> OverviewCell:
         repetitions=len(bucket),
         coder_tokens=average([token_value_for_role(row, "Coder") for row in bucket]),
         reviewer_tokens=average([token_value_for_role(row, "Reviewer") for row in bucket]),
+        total_execution_s=average([execution_value_for_role(row) for row in bucket]),
+        coder_execution_s=average([execution_value_for_role(row, "Coder") for row in bucket]),
+        reviewer_execution_s=average([execution_value_for_role(row, "Reviewer") for row in bucket]),
+        total_load_s=average([parse_float(row.get("total_load_duration_s"), 0.0) for row in bucket]),
+        coder_load_s=average([parse_float(row.get("coder_load_duration_s"), 0.0) for row in bucket]),
+        reviewer_load_s=average([parse_float(row.get("reviewer_load_duration_s"), 0.0) for row in bucket]),
+        failed_calls=average([parse_float(row.get("model_call_failures"), 0.0) for row in bucket]),
+        timeout_calls=average([1.0 if "timeout" in str(row.get("model_call_error_types", "")).lower() else 0.0 for row in bucket]),
+        error_type_count=average([
+            float(len([item for item in str(row.get("model_call_error_types", "")).split(";") if item]))
+            for row in bucket
+        ]),
+        syntax_ok_rate=average_optional([parse_bool_rate(row.get("final_syntax_ok")) for row in bucket]),
+        approval_rate=average_optional([parse_bool_rate(row.get("final_reviewer_approved")) for row in bucket]),
+        evaluator_pass_rate=average_optional([parse_bool_rate(row.get("evaluator_passed")) for row in bucket]),
     )
 
 
@@ -430,6 +896,17 @@ def aggregate_agent_call_bucket(bucket: list[dict[str, str]]) -> OverviewCell:
     rounds_values = [max(parse_int(row.get("round_no"), 0) for row in rows) for rows in attempts.values()]
     coder_token_values = [sum(token_value_for_role(row, "Coder") for row in rows) for rows in attempts.values()]
     reviewer_token_values = [sum(token_value_for_role(row, "Reviewer") for row in rows) for rows in attempts.values()]
+    coder_execution_values = [sum(execution_value_for_role(row, "Coder") for row in rows) for rows in attempts.values()]
+    reviewer_execution_values = [sum(execution_value_for_role(row, "Reviewer") for row in rows) for rows in attempts.values()]
+    total_execution_values = [coder_s + reviewer_s for coder_s, reviewer_s in zip(coder_execution_values, reviewer_execution_values)]
+    coder_load_values = [sum(parse_float(row.get("load_duration_s"), 0.0) for row in rows if row.get("agent_role", "").lower() == "coder") for rows in attempts.values()]
+    reviewer_load_values = [sum(parse_float(row.get("load_duration_s"), 0.0) for row in rows if row.get("agent_role", "").lower() == "reviewer") for rows in attempts.values()]
+    total_load_values = [coder_s + reviewer_s for coder_s, reviewer_s in zip(coder_load_values, reviewer_load_values)]
+    failed_values = [sum(1.0 for row in rows if parse_bool_rate(row.get("call_failed")) == 1.0) for rows in attempts.values()]
+    timeout_values = [sum(1.0 for row in rows if row_is_timeout(row)) for rows in attempts.values()]
+    error_type_count_values = [float(len({row_error_type(row) for row in rows if row_error_type(row)})) for rows in attempts.values()]
+    syntax_values = [latest_bool_rate(rows, "syntax_ok_after_coder") for rows in attempts.values()]
+    approval_values = [latest_bool_rate(rows, "reviewer_approved") for rows in attempts.values()]
     fallback_max_rounds = max(rounds_values) if rounds_values else 1
     max_values = [parse_int(row.get("max_rounds"), 0) for row in bucket if row_has_value(row, "max_rounds")]
     max_rounds = max(max_values) if max_values else fallback_max_rounds
@@ -441,6 +918,18 @@ def aggregate_agent_call_bucket(bucket: list[dict[str, str]]) -> OverviewCell:
         repetitions=len(attempts),
         coder_tokens=average(coder_token_values),
         reviewer_tokens=average(reviewer_token_values),
+        total_execution_s=average(total_execution_values),
+        coder_execution_s=average(coder_execution_values),
+        reviewer_execution_s=average(reviewer_execution_values),
+        total_load_s=average(total_load_values),
+        coder_load_s=average(coder_load_values),
+        reviewer_load_s=average(reviewer_load_values),
+        failed_calls=average(failed_values),
+        timeout_calls=average(timeout_values),
+        error_type_count=average(error_type_count_values),
+        syntax_ok_rate=average_optional(syntax_values),
+        approval_rate=average_optional(approval_values),
+        evaluator_pass_rate=None,
     )
 
 
@@ -471,6 +960,18 @@ def merge_token_cells(
             repetitions=cell.repetitions,
             coder_tokens=token_cell.coder_tokens,
             reviewer_tokens=token_cell.reviewer_tokens,
+            total_execution_s=token_cell.total_execution_s,
+            coder_execution_s=token_cell.coder_execution_s,
+            reviewer_execution_s=token_cell.reviewer_execution_s,
+            total_load_s=token_cell.total_load_s,
+            coder_load_s=token_cell.coder_load_s,
+            reviewer_load_s=token_cell.reviewer_load_s,
+            failed_calls=token_cell.failed_calls,
+            timeout_calls=token_cell.timeout_calls,
+            error_type_count=token_cell.error_type_count,
+            syntax_ok_rate=cell.syntax_ok_rate if cell.syntax_ok_rate is not None else token_cell.syntax_ok_rate,
+            approval_rate=cell.approval_rate if cell.approval_rate is not None else token_cell.approval_rate,
+            evaluator_pass_rate=cell.evaluator_pass_rate if cell.evaluator_pass_rate is not None else token_cell.evaluator_pass_rate,
         )
     return merged
 
@@ -550,10 +1051,11 @@ def cell_color(cell: OverviewCell | None) -> tuple[float, float, float]:
 @dataclass(frozen=True)
 class TokenRange:
     """
-    Min/max bounds for coloring token-consumption cells.
+    Min/max bounds for coloring cost cells such as tokens or seconds.
 
-    Zero-token cells are handled separately as timeout/failure indicators and
-    therefore are excluded from the positive minimum and maximum.
+    Zero-value cells are handled separately as timeout/failure indicators and
+    therefore are excluded from the positive minimum and maximum. The historic
+    class name is kept because public tests import it directly.
     """
 
     minimum: float
@@ -596,6 +1098,69 @@ def token_color(tokens: float, token_range: TokenRange) -> tuple[float, float, f
     return interpolate_color(GREEN, RED, ratio)
 
 
+def metric_color(value: float, metric_range: TokenRange) -> tuple[float, float, float]:
+    """
+    Choose a green-to-red background color for generic cost metrics.
+
+    Args:
+        value, float, >= 0.0: metric value such as seconds or tokens.
+        metric_range, TokenRange: global positive min/max for the metric.
+
+    Returns:
+        color, tuple[float, float, float]: blue for zero, otherwise green-to-red by relative cost.
+    """
+    return token_color(value, metric_range)
+
+
+def lower_is_better_color(value: float, metric_range: TokenRange) -> tuple[float, float, float]:
+    """
+    Color metrics where lower values are better and zero is a valid optimum.
+
+    Args:
+        value, float, >= 0.0: count or cost metric.
+        metric_range, TokenRange: positive min/max for the metric.
+
+    Returns:
+        color, tuple[float, float, float]: green for zero/low values and red for high values.
+    """
+    if value <= 0:
+        return GREEN
+    if metric_range.maximum <= 0:
+        return GREEN
+    ratio = value / metric_range.maximum if metric_range.maximum else 0.0
+    return interpolate_color(GREEN, RED, ratio)
+
+
+def higher_is_better_color(
+    value: float | None,
+    metric_range: TokenRange,
+    *,
+    missing_color: tuple[float, float, float] = BLUE,
+    zero_color: tuple[float, float, float] = BLUE,
+) -> tuple[float, float, float]:
+    """
+    Color metrics where higher values are better.
+
+    Args:
+        value, float | None: quality or throughput value.
+        metric_range, TokenRange: positive min/max for the metric.
+        missing_color, tuple[float, float, float]: color used for missing values.
+        zero_color, tuple[float, float, float]: color used for known zero values.
+
+    Returns:
+        color, tuple[float, float, float]: red-to-green by relative score, or missing_color.
+    """
+    if value is None:
+        return missing_color
+    if value <= 0:
+        return zero_color
+    if metric_range.maximum <= metric_range.minimum:
+        ratio = 1.0
+    else:
+        ratio = (value - metric_range.minimum) / (metric_range.maximum - metric_range.minimum)
+    return interpolate_color(RED, GREEN, ratio)
+
+
 def token_ranges_for_cells(cells: dict[tuple[str, str], OverviewCell]) -> tuple[TokenRange, TokenRange]:
     """
     Build Coder and Reviewer token ranges from all overview cells.
@@ -609,6 +1174,123 @@ def token_ranges_for_cells(cells: dict[tuple[str, str], OverviewCell]) -> tuple[
     coder_range = build_token_range([cell.coder_tokens for cell in cells.values()])
     reviewer_range = build_token_range([cell.reviewer_tokens for cell in cells.values()])
     return coder_range, reviewer_range
+
+
+def time_ranges_for_cells(cells: dict[tuple[str, str], OverviewCell]) -> tuple[TokenRange, TokenRange, TokenRange]:
+    """
+    Build no-load execution time ranges from all overview cells.
+
+    Args:
+        cells, dict[tuple[str, str], OverviewCell]: overview matrix cells.
+
+    Returns:
+        ranges, tuple[TokenRange, TokenRange, TokenRange]: TTNL, TTC, and TTR ranges.
+    """
+    total_range = build_token_range([cell.total_execution_s for cell in cells.values()])
+    coder_range = build_token_range([cell.coder_execution_s for cell in cells.values()])
+    reviewer_range = build_token_range([cell.reviewer_execution_s for cell in cells.values()])
+    return total_range, coder_range, reviewer_range
+
+
+def load_ranges_for_cells(cells: dict[tuple[str, str], OverviewCell]) -> tuple[TokenRange, TokenRange, TokenRange]:
+    """
+    Build model loading time ranges from all overview cells.
+
+    Args:
+        cells, dict[tuple[str, str], OverviewCell]: overview matrix cells.
+
+    Returns:
+        ranges, tuple[TokenRange, TokenRange, TokenRange]: TTL, TLC, and TLR ranges.
+    """
+    total_range = build_token_range([cell.total_load_s for cell in cells.values()])
+    coder_range = build_token_range([cell.coder_load_s for cell in cells.values()])
+    reviewer_range = build_token_range([cell.reviewer_load_s for cell in cells.values()])
+    return total_range, coder_range, reviewer_range
+
+
+def tps_ranges_for_cells(cells: dict[tuple[str, str], OverviewCell]) -> tuple[TokenRange, TokenRange, TokenRange]:
+    """
+    Build generated-token throughput ranges from all overview cells.
+
+    Args:
+        cells, dict[tuple[str, str], OverviewCell]: overview matrix cells.
+
+    Returns:
+        ranges, tuple[TokenRange, TokenRange, TokenRange]: ATPS, CTPS, and RTPS ranges.
+    """
+    combined_range = build_token_range([cell.combined_tps for cell in cells.values()])
+    coder_range = build_token_range([cell.coder_tps for cell in cells.values()])
+    reviewer_range = build_token_range([cell.reviewer_tps for cell in cells.values()])
+    return combined_range, coder_range, reviewer_range
+
+
+def reliability_ranges_for_cells(cells: dict[tuple[str, str], OverviewCell]) -> tuple[TokenRange, TokenRange, TokenRange]:
+    """
+    Build failure-count ranges from all overview cells.
+
+    Args:
+        cells, dict[tuple[str, str], OverviewCell]: overview matrix cells.
+
+    Returns:
+        ranges, tuple[TokenRange, TokenRange, TokenRange]: failed call, timeout, and error-type ranges.
+    """
+    failed_range = build_token_range([cell.failed_calls for cell in cells.values()])
+    timeout_range = build_token_range([cell.timeout_calls for cell in cells.values()])
+    error_range = build_token_range([cell.error_type_count for cell in cells.values()])
+    return failed_range, timeout_range, error_range
+
+
+def quality_ranges_for_cells(cells: dict[tuple[str, str], OverviewCell]) -> tuple[TokenRange, TokenRange, TokenRange]:
+    """
+    Build quality-indicator ranges from all overview cells.
+
+    Args:
+        cells, dict[tuple[str, str], OverviewCell]: overview matrix cells.
+
+    Returns:
+        ranges, tuple[TokenRange, TokenRange, TokenRange]: syntax, approval, and evaluator ranges.
+    """
+    syntax_range = build_token_range([cell.syntax_ok_rate or 0.0 for cell in cells.values()])
+    approval_range = build_token_range([cell.approval_rate or 0.0 for cell in cells.values()])
+    evaluator_range = build_token_range([cell.evaluator_pass_rate or 0.0 for cell in cells.values()])
+    return syntax_range, approval_range, evaluator_range
+
+
+def efficiency_ranges_for_cells(cells: dict[tuple[str, str], OverviewCell]) -> tuple[TokenRange, TokenRange, TokenRange]:
+    """
+    Build efficiency ranges from all overview cells.
+
+    Args:
+        cells, dict[tuple[str, str], OverviewCell]: overview matrix cells.
+
+    Returns:
+        ranges, tuple[TokenRange, TokenRange, TokenRange]: quality, quality/second, and quality/1k-token ranges.
+    """
+    quality_range = build_token_range([cell.quality_score or 0.0 for cell in cells.values()])
+    qps_range = build_token_range([cell.quality_per_second for cell in cells.values()])
+    qpk_range = build_token_range([cell.quality_per_1k_tokens for cell in cells.values()])
+    return quality_range, qps_range, qpk_range
+
+
+def all_metric_ranges(cells: dict[tuple[str, str], OverviewCell]) -> dict[str, tuple[TokenRange, ...]]:
+    """
+    Build all PDF table color ranges in one place.
+
+    Args:
+        cells, dict[tuple[str, str], OverviewCell]: overview matrix cells.
+
+    Returns:
+        ranges, dict[str, tuple[TokenRange, ...]]: color ranges keyed by table kind.
+    """
+    return {
+        "tokens": token_ranges_for_cells(cells),
+        "times": time_ranges_for_cells(cells),
+        "loads": load_ranges_for_cells(cells),
+        "tps": tps_ranges_for_cells(cells),
+        "reliability": reliability_ranges_for_cells(cells),
+        "quality": quality_ranges_for_cells(cells),
+        "efficiency": efficiency_ranges_for_cells(cells),
+    }
 
 
 def ordered_values(rows: list[dict[str, str]], key: str) -> list[str]:
@@ -659,7 +1341,16 @@ def draw_legend_item(
     return x + swatch_size + 5 + len(label) * 3.1
 
 
-def draw_color_legend(commands: list[str], x: float, y: float) -> None:
+def draw_color_legend(
+    commands: list[str],
+    x: float,
+    y: float,
+    *,
+    green_label: str = "green: 1 round / min tokens",
+    red_label: str = "red: max rounds / max tokens",
+    gray_label: str | None = "gray: stagnation",
+    blue_label: str = "blue: max rounds / 0 tokens",
+) -> None:
     """
     Draw the PDF color legend with actual color samples.
 
@@ -667,14 +1358,19 @@ def draw_color_legend(commands: list[str], x: float, y: float) -> None:
         commands, list[str]: PDF command list to append to.
         x, float: left coordinate in points.
         y, float: bottom coordinate in points.
+        green_label, str: explanation for green cells.
+        red_label, str: explanation for red cells.
+        gray_label, str | None: optional explanation for gray cells.
+        blue_label, str: explanation for blue cells.
 
     Returns:
         None.
     """
-    next_x = draw_legend_item(commands, x, y, GREEN, "green: 1 round / min tokens")
-    next_x = draw_legend_item(commands, next_x, y, RED, "red: max rounds / max tokens")
-    next_x = draw_legend_item(commands, next_x, y, GRAY, "gray: stagnation")
-    draw_legend_item(commands, next_x, y, BLUE, "blue: max rounds / 0 tokens")
+    next_x = draw_legend_item(commands, x, y, GREEN, green_label)
+    next_x = draw_legend_item(commands, next_x, y, RED, red_label)
+    if gray_label:
+        next_x = draw_legend_item(commands, next_x, y, GRAY, gray_label)
+    draw_legend_item(commands, next_x, y, BLUE, blue_label)
 
 
 def draw_subcell(
@@ -714,6 +1410,9 @@ def draw_table_page(
     experiments: list[str],
     cells: dict[tuple[str, str], OverviewCell],
     token_ranges: tuple[TokenRange, TokenRange],
+    time_ranges: tuple[TokenRange, TokenRange, TokenRange] | None = None,
+    metric_ranges: dict[str, tuple[TokenRange, ...]] | None = None,
+    table_kind: str = "tokens",
     page_number: int,
     total_pages_hint: int,
 ) -> list[str]:
@@ -726,6 +1425,9 @@ def draw_table_page(
         experiments, list[str]: experiment ids included on this page.
         cells, dict[tuple[str, str], OverviewCell]: task/experiment matrix values.
         token_ranges, tuple[TokenRange, TokenRange]: Coder and Reviewer token color ranges.
+        time_ranges, tuple[TokenRange, TokenRange, TokenRange] | None: backwards-compatible total/Coder/Reviewer time color ranges.
+        metric_ranges, dict[str, tuple[TokenRange, ...]] | None: color ranges keyed by PDF table kind.
+        table_kind, str: metric table kind to draw.
         page_number, int, >= 1: current page index.
         total_pages_hint, int, >= 1: total generated pages for footer display.
 
@@ -733,24 +1435,73 @@ def draw_table_page(
         commands, list[str]: PDF drawing commands for the page.
     """
     commands: list[str] = []
-    coder_token_range, reviewer_token_range = token_ranges
-    commands.append(text_command(MARGIN, PAGE_HEIGHT - 24, title, size=TITLE_FONT_SIZE))
-    commands.append(
-        text_command(
-            MARGIN,
-            PAGE_HEIGHT - 40,
+    metric_ranges = metric_ranges or {
+        "tokens": token_ranges,
+        "times": time_ranges
+        or (
+            TokenRange(0.0, 0.0),
+            TokenRange(0.0, 0.0),
+            TokenRange(0.0, 0.0),
+        ),
+    }
+    current_ranges = metric_ranges.get(table_kind, (TokenRange(0.0, 0.0),) * 3)
+    table_specs = {
+        "tokens": (
+            SUB_COLUMNS,
             "Overview: R=rounds_used/max_rounds, TCT=Coder generated tokens, TRT=Reviewer generated tokens",
-            size=8,
-        )
+            ("green: 1 round / min tokens", "red: max rounds / max tokens", "gray: stagnation", "blue: max rounds / 0 tokens"),
+        ),
+        "times": (
+            TIME_SUB_COLUMNS,
+            "Timing: TTNL=Coder+Reviewer execution time without model loading, TTC=Coder execution, TTR=Reviewer execution",
+            ("green: min execution time", "red: max execution time", None, "blue: 0 execution time"),
+        ),
+        "loads": (
+            LOAD_SUB_COLUMNS,
+            "Loading: TTL=total model load time, TLC=Coder load time, TLR=Reviewer load time",
+            ("green: min load time", "red: max load time", None, "blue: 0 load time"),
+        ),
+        "tps": (
+            TPS_SUB_COLUMNS,
+            "Throughput: ATPS=all generated tokens/sec, CTPS=Coder tokens/sec, RTPS=Reviewer tokens/sec",
+            ("green: max throughput", "red: min throughput", None, "blue: 0 throughput"),
+        ),
+        "reliability": (
+            RELIABILITY_SUB_COLUMNS,
+            "Reliability: FC=failed calls, TO=timeout calls, ERR=distinct error types",
+            ("green: no failures", "red: most failures", None, "blue: unused"),
+        ),
+        "quality": (
+            QUALITY_SUB_COLUMNS,
+            "Quality: SYN=syntax ok rate, APP=reviewer approval rate, EVAL=evaluator pass rate",
+            ("green: best quality", "red: worst quality", "gray: unknown", "blue: unused"),
+        ),
+        "efficiency": (
+            EFFICIENCY_SUB_COLUMNS,
+            "Efficiency: Q=quality score, QPS=quality/sec, QPK=quality per 1k generated tokens",
+            ("green: best efficiency", "red: worst efficiency", "gray: unknown", "blue: zero efficiency"),
+        ),
+    }
+    sub_columns, overview_text, legend_labels = table_specs.get(table_kind, table_specs["tokens"])
+
+    commands.append(text_command(MARGIN, PAGE_HEIGHT - 24, title, size=TITLE_FONT_SIZE))
+    commands.append(text_command(MARGIN, PAGE_HEIGHT - 40, overview_text, size=8))
+    draw_color_legend(
+        commands,
+        MARGIN,
+        PAGE_HEIGHT - 58,
+        green_label=legend_labels[0],
+        red_label=legend_labels[1],
+        gray_label=legend_labels[2],
+        blue_label=legend_labels[3],
     )
-    draw_color_legend(commands, MARGIN, PAGE_HEIGHT - 58)
 
     available_width = PAGE_WIDTH - 2 * MARGIN - TASK_COL_WIDTH
     group_width = min(
         MAX_EXPERIMENT_GROUP_WIDTH,
         max(MIN_EXPERIMENT_GROUP_WIDTH, available_width / max(1, len(experiments))),
     )
-    sub_width = group_width / len(SUB_COLUMNS)
+    sub_width = group_width / len(sub_columns)
     table_top = PAGE_HEIGHT - 94
     header_y = table_top - ROW_HEIGHT
     info_y = header_y - ROW_HEIGHT
@@ -767,7 +1518,7 @@ def draw_table_page(
         commands.append(fill_rect_command(group_x, header_y, group_width, ROW_HEIGHT, (0.88, 0.88, 0.88)))
         commands.append(stroke_rect_command(group_x, header_y, group_width, ROW_HEIGHT))
         commands.append(text_command(group_x + 3, header_y + 6, truncate_text(experiment, 18), size=HEADER_FONT_SIZE))
-        for sub_idx, sub_label in enumerate(SUB_COLUMNS):
+        for sub_idx, sub_label in enumerate(sub_columns):
             sub_x = group_x + sub_idx * sub_width
             commands.append(fill_rect_command(sub_x, info_y, sub_width, ROW_HEIGHT, (0.94, 0.94, 0.94)))
             commands.append(stroke_rect_command(sub_x, info_y, sub_width, ROW_HEIGHT))
@@ -781,12 +1532,58 @@ def draw_table_page(
         for col_idx, experiment in enumerate(experiments):
             group_x = MARGIN + TASK_COL_WIDTH + col_idx * group_width
             cell = cells.get((task_id, experiment))
-            labels = (cell.rounds_label, cell.coder_tokens_label(), cell.reviewer_tokens_label()) if cell else ("", "", "")
-            colors = (
-                cell_color(cell),
-                token_color(cell.coder_tokens, coder_token_range) if cell else cell_color(None),
-                token_color(cell.reviewer_tokens, reviewer_token_range) if cell else cell_color(None),
-            )
+            if cell and table_kind == "times":
+                labels = (cell.total_execution_label(), cell.coder_execution_label(), cell.reviewer_execution_label())
+                colors = (
+                    metric_color(cell.total_execution_s, current_ranges[0]),
+                    metric_color(cell.coder_execution_s, current_ranges[1]),
+                    metric_color(cell.reviewer_execution_s, current_ranges[2]),
+                )
+            elif cell and table_kind == "loads":
+                labels = (cell.total_load_label(), cell.coder_load_label(), cell.reviewer_load_label())
+                colors = (
+                    metric_color(cell.total_load_s, current_ranges[0]),
+                    metric_color(cell.coder_load_s, current_ranges[1]),
+                    metric_color(cell.reviewer_load_s, current_ranges[2]),
+                )
+            elif cell and table_kind == "tps":
+                labels = (cell.combined_tps_label(), cell.coder_tps_label(), cell.reviewer_tps_label())
+                colors = (
+                    higher_is_better_color(cell.combined_tps, current_ranges[0]),
+                    higher_is_better_color(cell.coder_tps, current_ranges[1]),
+                    higher_is_better_color(cell.reviewer_tps, current_ranges[2]),
+                )
+            elif cell and table_kind == "reliability":
+                labels = (cell.failed_calls_label(), cell.timeout_calls_label(), cell.error_type_count_label())
+                colors = (
+                    lower_is_better_color(cell.failed_calls, current_ranges[0]),
+                    lower_is_better_color(cell.timeout_calls, current_ranges[1]),
+                    lower_is_better_color(cell.error_type_count, current_ranges[2]),
+                )
+            elif cell and table_kind == "quality":
+                labels = (cell.syntax_rate_label(), cell.approval_rate_label(), cell.evaluator_pass_rate_label())
+                colors = (
+                    higher_is_better_color(cell.syntax_ok_rate, current_ranges[0], missing_color=GRAY, zero_color=RED),
+                    higher_is_better_color(cell.approval_rate, current_ranges[1], missing_color=GRAY, zero_color=RED),
+                    higher_is_better_color(cell.evaluator_pass_rate, current_ranges[2], missing_color=GRAY, zero_color=RED),
+                )
+            elif cell and table_kind == "efficiency":
+                labels = (cell.quality_score_label(), cell.quality_per_second_label(), cell.quality_per_1k_tokens_label())
+                colors = (
+                    higher_is_better_color(cell.quality_score, current_ranges[0], missing_color=GRAY, zero_color=RED),
+                    higher_is_better_color(cell.quality_per_second, current_ranges[1]),
+                    higher_is_better_color(cell.quality_per_1k_tokens, current_ranges[2]),
+                )
+            elif cell:
+                labels = (cell.rounds_label, cell.coder_tokens_label(), cell.reviewer_tokens_label())
+                colors = (
+                    cell_color(cell),
+                    token_color(cell.coder_tokens, current_ranges[0]),
+                    token_color(cell.reviewer_tokens, current_ranges[1]),
+                )
+            else:
+                labels = ("", "", "")
+                colors = (cell_color(None), cell_color(None), cell_color(None))
             for sub_idx, (label, color) in enumerate(zip(labels, colors)):
                 draw_subcell(commands, group_x + sub_idx * sub_width, y, sub_width, label, color)
 
@@ -814,7 +1611,7 @@ def generate_overview_pdf(
         summary_path, str | Path: path to summary.csv produced by the benchmark runner.
         output_path, str | Path: destination PDF path.
         title, str: document title printed on each page.
-        agent_calls_path, str | Path | None: optional per-call CSV used for R/TCT/TRT token aggregation.
+        agent_calls_path, str | Path | None: optional per-call CSV used for token, timing, loading, throughput, reliability, and partial quality aggregation.
 
     Returns:
         output_path, Path: written PDF path.
@@ -829,31 +1626,38 @@ def generate_overview_pdf(
     if not tasks or not experiments:
         raise ValueError("summary.csv must contain non-empty task_id and experiment_id values")
     cells = aggregate_overview(rows, agent_call_rows=agent_call_rows)
-    token_ranges = token_ranges_for_cells(cells)
+    metric_ranges = all_metric_ranges(cells)
+    token_ranges = metric_ranges["tokens"]  # Kept for draw_table_page backwards-compatible arguments.
+    time_ranges = metric_ranges["times"]
+    table_kinds = ("tokens", "times", "loads", "tps", "reliability", "quality", "efficiency")
 
     available_width = PAGE_WIDTH - 2 * MARGIN - TASK_COL_WIDTH
     experiments_per_page = max(1, int(available_width // MIN_EXPERIMENT_GROUP_WIDTH))
     rows_per_page = max(1, int((PAGE_HEIGHT - 134) // ROW_HEIGHT))
     experiment_chunks = [experiments[i : i + experiments_per_page] for i in range(0, len(experiments), experiments_per_page)]
     task_chunks = [tasks[i : i + rows_per_page] for i in range(0, len(tasks), rows_per_page)]
-    total_pages = max(1, len(experiment_chunks) * len(task_chunks))
+    total_pages = max(1, len(experiment_chunks) * len(task_chunks) * len(table_kinds))
 
     pdf = SimplePdf()
     page_number = 1
     for experiment_chunk in experiment_chunks:
         for task_chunk in task_chunks:
-            pdf.add_page(
-                draw_table_page(
-                    title=title,
-                    tasks=task_chunk,
-                    experiments=experiment_chunk,
-                    cells=cells,
-                    token_ranges=token_ranges,
-                    page_number=page_number,
-                    total_pages_hint=total_pages,
+            for table_kind in table_kinds:
+                pdf.add_page(
+                    draw_table_page(
+                        title=title,
+                        tasks=task_chunk,
+                        experiments=experiment_chunk,
+                        cells=cells,
+                        token_ranges=token_ranges,
+                        time_ranges=time_ranges,
+                        metric_ranges=metric_ranges,
+                        table_kind=table_kind,
+                        page_number=page_number,
+                        total_pages_hint=total_pages,
+                    )
                 )
-            )
-            page_number += 1
+                page_number += 1
 
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)

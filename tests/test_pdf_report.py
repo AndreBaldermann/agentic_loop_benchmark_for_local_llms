@@ -26,6 +26,11 @@ class PdfReportTests(unittest.TestCase):
                 "round_no": "1",
                 "agent_role": "Coder",
                 "output_tokens": "337",
+                "prompt_eval_duration_s": "1.25",
+                "eval_duration_s": "0.75",
+                "load_duration_s": "0.50",
+                "syntax_ok_after_coder": "True",
+                "call_failed": "False",
             },
             {
                 "run_id": "20260607_103907_538776",
@@ -35,6 +40,11 @@ class PdfReportTests(unittest.TestCase):
                 "round_no": "1",
                 "agent_role": "Reviewer",
                 "output_tokens": "83",
+                "prompt_eval_duration_s": "0.40",
+                "eval_duration_s": "0.10",
+                "load_duration_s": "0.25",
+                "reviewer_approved": "True",
+                "call_failed": "False",
             },
             {
                 "run_id": "20260607_103945_261855",
@@ -44,12 +54,26 @@ class PdfReportTests(unittest.TestCase):
                 "round_no": "1",
                 "agent_role": "Coder",
                 "output_tokens": "311",
+                "prompt_eval_duration_s": "1.00",
+                "eval_duration_s": "0.25",
+                "load_duration_s": "0.20",
+                "syntax_ok_after_coder": "False",
+                "call_failed": "True",
+                "error_type": "TimeoutError",
             },
         ]
         cells = aggregate_overview(rows)
         self.assertEqual(cells[("HumanEval/0", "qwen_self_review")].label, "1/1")
         self.assertEqual(cells[("HumanEval/0", "qwen_self_review")].coder_tokens_label(), "337")
         self.assertEqual(cells[("HumanEval/0", "qwen_self_review")].reviewer_tokens_label(), "83")
+        self.assertEqual(cells[("HumanEval/0", "qwen_self_review")].total_execution_label(), "2.5")
+        self.assertEqual(cells[("HumanEval/0", "qwen_self_review")].coder_execution_label(), "2")
+        self.assertEqual(cells[("HumanEval/0", "qwen_self_review")].reviewer_execution_label(), "0.5")
+        self.assertEqual(cells[("HumanEval/0", "qwen_self_review")].total_load_label(), "0.75")
+        self.assertEqual(cells[("HumanEval/0", "qwen_self_review")].combined_tps_label(), "168")
+        self.assertEqual(cells[("HumanEval/0", "qwen_self_review")].failed_calls_label(), "0")
+        self.assertEqual(cells[("HumanEval/0", "qwen_self_review")].syntax_rate_label(), "100")
+        self.assertEqual(cells[("HumanEval/0", "qwen_self_review")].quality_score_label(), "100")
         self.assertEqual(cells[("HumanEval/0", "qwen_self_review")].repetitions, 1)
         self.assertEqual(cells[("HumanEval/0", "qwen_no_review")].label, "1/1")
 
@@ -58,11 +82,26 @@ class PdfReportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             summary_path = Path(tmp) / "agent_calls.csv"
             output_path = Path(tmp) / "overview.pdf"
-            fieldnames = ["run_id", "experiment_id", "task_id", "repetition", "round_no", "agent_role", "output_tokens"]
+            fieldnames = [
+                "run_id",
+                "experiment_id",
+                "task_id",
+                "repetition",
+                "round_no",
+                "agent_role",
+                "output_tokens",
+                "prompt_eval_duration_s",
+                "eval_duration_s",
+                "load_duration_s",
+                "syntax_ok_after_coder",
+                "reviewer_approved",
+                "call_failed",
+                "error_type",
+            ]
             rows = [
-                ["20260607_103907_538776", "qwen_self_review", "HumanEval/0", "1", "1", "Coder", "337"],
-                ["20260607_103907_538776", "qwen_self_review", "HumanEval/0", "1", "1", "Reviewer", "83"],
-                ["20260607_103945_261855", "qwen_no_review", "HumanEval/0", "1", "1", "Coder", "311"],
+                ["20260607_103907_538776", "qwen_self_review", "HumanEval/0", "1", "1", "Coder", "337", "1.25", "0.75", "0.50", "True", "", "False", ""],
+                ["20260607_103907_538776", "qwen_self_review", "HumanEval/0", "1", "1", "Reviewer", "83", "0.40", "0.10", "0.25", "", "True", "False", ""],
+                ["20260607_103945_261855", "qwen_no_review", "HumanEval/0", "1", "1", "Coder", "311", "1.00", "0.25", "0.20", "False", "", "True", "TimeoutError"],
             ]
             with summary_path.open("w", encoding="utf-8", newline="") as f:
                 writer = csv.writer(f)
@@ -79,10 +118,25 @@ class PdfReportTests(unittest.TestCase):
         self.assertIn("(R)", pdf_text)
         self.assertIn("(TCT)", pdf_text)
         self.assertIn("(TRT)", pdf_text)
+        self.assertIn("(TTNL)", pdf_text)
+        self.assertIn("(TTC)", pdf_text)
+        self.assertIn("(TTR)", pdf_text)
+        for header in ["TTL", "TLC", "TLR", "ATPS", "CTPS", "RTPS", "FC", "TO", "ERR", "SYN", "APP", "EVAL", "Q", "QPS", "QPK"]:
+            self.assertIn(f"({header})", pdf_text)
         self.assertIn("(1/1)", pdf_text)
         self.assertIn("(337)", pdf_text)
         self.assertIn("(83)", pdf_text)
+        self.assertIn("(2.5)", pdf_text)
+        self.assertIn("(0.75)", pdf_text)
+        self.assertIn("(168)", pdf_text)
+        self.assertIn("(100)", pdf_text)
         self.assertIn("(green: 1 round / min tokens)", pdf_text)
+        self.assertIn("(green: min execution time)", pdf_text)
+        self.assertIn("(green: min load time)", pdf_text)
+        self.assertIn("(green: max throughput)", pdf_text)
+        self.assertIn("(green: no failures)", pdf_text)
+        self.assertIn("(green: best quality)", pdf_text)
+        self.assertIn("(green: best efficiency)", pdf_text)
         self.assertIn("0.350 0.820 0.350 rg", pdf_text)
         self.assertIn("0.900 0.250 0.250 rg", pdf_text)
         self.assertIn("1.00 w 0.000 0.000 0.000 RG", pdf_text)
