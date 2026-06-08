@@ -18,10 +18,20 @@ Very small checklist:
 ```bash
 python3 basis_agentic_coding_loop.py \
   --config configs/loop_configs.csv \
-  --prompt "Write a Python function add_two(x) that returns x + 2."
+  --prompt "Write a Python function add_two(x) that returns x + 2." \
+  --pdf-report
 ```
 
-That runs the prompt once for every row in `configs/loop_configs.csv`. If you only want to try one row, add `--experiment-id`:
+That runs the prompt once for every row in `configs/loop_configs.csv` and writes `overview.pdf` next to the interactive CSV results. The equivalent module command also works without explicitly writing `interactive`:
+
+```bash
+python3 -m agentic_benchmark.cli \
+  --config configs/loop_configs.csv \
+  --prompt "Write a Python function add_two(x) that returns x + 2." \
+  --pdf-report
+```
+
+If you only want to try one row, add `--experiment-id`:
 
 ```bash
 python3 basis_agentic_coding_loop.py \
@@ -52,7 +62,7 @@ Important columns in that CSV:
 - `max_rounds`: maximum Coder/Reviewer loop iterations
 - `feedback_mode`, `stop_policy`, `evaluator`: loop behavior
 
-Interactive results are written to `results/interactive_YYYYMMDD_HHMMSS/` and include generated code, history, `summary.csv`, and `agent_calls.csv`.
+Interactive results are written to `results/interactive_YYYYMMDD_HHMMSS/` and include generated code, history, `summary.csv`, `agent_calls.csv`, and `overview.pdf` when `--pdf-report` is used.
 
 ## 2. Validate loop configurations
 

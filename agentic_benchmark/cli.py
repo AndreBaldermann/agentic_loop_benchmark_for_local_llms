@@ -87,7 +87,7 @@ def interactive(args: argparse.Namespace) -> int:
     Run the interactive single-task workflow over selected config rows.
 
     Args:
-        args, argparse.Namespace: parsed CLI arguments containing config, prompt, output_dir, and verbose.
+        args, argparse.Namespace: parsed CLI arguments containing config, prompt, output_dir, verbose, and optional PDF report settings.
 
     Returns:
         exit_code, int, 0 or 1: process-style status code.
@@ -126,6 +126,15 @@ def interactive(args: argparse.Namespace) -> int:
     print(f"Summary CSV:\n{writer.summary_path}")
     print(f"Agent Calls CSV:\n{writer.agent_calls_path}")
     print(f"Artifacts directory:\n{writer.artifacts_dir}")
+
+    if getattr(args, "pdf_report", False):
+        pdf_output = resolve_pdf_output_path(output_dir, getattr(args, "pdf_output", None))
+        return generate_pdf_report_for_run(
+            writer.summary_path,
+            pdf_output,
+            getattr(args, "pdf_title", "Agentic Benchmark Report"),
+            writer.agent_calls_path,
+        )
     return 0
 
 
@@ -197,7 +206,7 @@ def prepare_load_mode(config: ExperimentConfig, warmed: set[str]) -> None:
 
 def resolve_pdf_output_path(output_dir: Path, pdf_output: str | None) -> Path:
     """
-    Resolve the PDF report output path for run --pdf-report.
+    Resolve the PDF report output path for run/interactive --pdf-report.
 
     Args:
         output_dir, Path: timestamped benchmark output directory.
@@ -452,6 +461,20 @@ def build_parser() -> argparse.ArgumentParser:
     interactive_parser.add_argument("--verbose", action="store_true")
     interactive_parser.add_argument("--prompt", help="Task text for non-interactive single-task runs.")
     interactive_parser.add_argument("--prompt-file", help="Path to a text file containing the interactive task.")
+    interactive_parser.add_argument(
+        "--pdf-report",
+        action="store_true",
+        help="Generate overview.pdf from this interactive run's summary.csv after all config rows complete.",
+    )
+    interactive_parser.add_argument(
+        "--pdf-output",
+        help="Optional PDF path or directory for --pdf-report; defaults to the interactive output directory.",
+    )
+    interactive_parser.add_argument(
+        "--pdf-title",
+        default="Agentic Benchmark Report",
+        help="Title used for --pdf-report.",
+    )
     interactive_parser.set_defaults(func=interactive)
 
     run_parser = subparsers.add_parser("run", help="Run a task-provider benchmark over all CSV configurations.")

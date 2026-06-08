@@ -25,12 +25,14 @@ python3 -m agentic_benchmark.cli interactive \
   --config configs/loop_configs.csv \
   --prompt "Write a function that adds two numbers." \
   --output-dir results \
+  --pdf-report \
   --verbose
 
 # Backwards-compatible default: no subcommand also means interactive.
 python3 basis_agentic_coding_loop.py \
   --config configs/loop_configs.csv \
-  --prompt "Write a function that adds two numbers."
+  --prompt "Write a function that adds two numbers." \
+  --pdf-report
 ```
 
 If `--experiment-id` is omitted, every row from `--config` is run against the same prompt. Add `--experiment-id qwen_self_review` only when you want to try one row. This is the easiest way to try arbitrary prompts with arbitrary Coder/Reviewer combinations before learning the structured `run` command.
@@ -45,6 +47,9 @@ Options:
 | `--verbose` | `false` | Print prompts and verbose loop details. |
 | `--prompt` | none | Inline task text for non-interactive usage. |
 | `--prompt-file` | none | Text file containing the task, useful for multi-line prompts. |
+| `--pdf-report` | `false` | Generate `overview.pdf` from this interactive run's `summary.csv` after all config rows complete. |
+| `--pdf-output` | interactive output directory | Optional PDF path or directory for `--pdf-report`. |
+| `--pdf-title` | `Agentic Benchmark Report` | Title used in the generated PDF report. |
 
 ### `run`
 
@@ -135,7 +140,15 @@ Options:
 | `--agent-calls` | inferred next to `summary.csv` | Optional `agent_calls.csv` path used to aggregate TCT/TRT token columns. |
 | `--title` | `Agentic Benchmark Report` | Title printed on the PDF pages. |
 
-Generate the same PDF directly during a benchmark run:
+Generate the same PDF directly during an interactive prompt run:
+
+```bash
+python3 -m agentic_benchmark.cli \
+  --prompt "write a function that adds 2 numbers in python" \
+  --pdf-report
+```
+
+Generate the same PDF directly during a structured benchmark run:
 
 ```bash
 python3 -m agentic_benchmark.cli run \

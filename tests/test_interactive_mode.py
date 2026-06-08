@@ -76,6 +76,43 @@ class InteractiveModeTests(unittest.TestCase):
         self.assertEqual(writer_cls.return_value.write_result.call_count, 2)
         self.assertEqual(prepare_load.call_count, 2)
 
+
+    def test_prompt_argument_can_generate_pdf_report(self):
+        """Verify --pdf-report writes an overview after all interactive config rows finish."""
+        fake_result = SimpleNamespace(final_code_file="code.py", history_file="history.json")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "configs.csv"
+            self.write_config(config_path)
+            args = SimpleNamespace(
+                output_dir=str(Path(tmp) / "interactive-results"),
+                verbose=False,
+                prompt="solve my custom task",
+                prompt_file=None,
+                config=str(config_path),
+                experiment_id=None,
+                pdf_report=True,
+                pdf_output=None,
+                pdf_title="Interactive Report",
+            )
+            with patch.object(cli, "run_agentic_loop", return_value=fake_result), \
+                 patch.object(cli, "ResultsWriter") as writer_cls, \
+                 patch.object(cli, "prepare_load_mode"), \
+                 patch.object(cli, "print_interactive_summary"), \
+                 patch.object(cli, "generate_pdf_report_for_run", return_value=0) as pdf_report:
+                writer_cls.return_value.summary_path = Path(tmp) / "summary.csv"
+                writer_cls.return_value.agent_calls_path = Path(tmp) / "agent_calls.csv"
+                writer_cls.return_value.artifacts_dir = Path(tmp) / "artifacts"
+                exit_code = cli.interactive(args)
+
+        self.assertEqual(exit_code, 0)
+        pdf_report.assert_called_once()
+        call_args = pdf_report.call_args.args
+        self.assertEqual(call_args[0], Path(tmp) / "summary.csv")
+        self.assertEqual(call_args[1].name, "overview.pdf")
+        self.assertEqual(call_args[2], "Interactive Report")
+        self.assertEqual(call_args[3], Path(tmp) / "agent_calls.csv")
+
     def test_prompt_file_is_read_as_interactive_task_text(self):
         """Verify --prompt-file supports multi-line task descriptions."""
         with tempfile.TemporaryDirectory() as tmp:
