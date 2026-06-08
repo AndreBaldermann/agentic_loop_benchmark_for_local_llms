@@ -7,18 +7,24 @@ A beginner-friendly local tool for trying and benchmarking **agentic Coder/Revie
 How to directly use it in Ubuntu:
 
 Prepare Environment:
-1. git clone https://github.com/AndreBaldermann/agentic_loop_benchmark_for_local_llms.git
-2. cd agentic_loop_benchmark_for_local_llms
-3. python -m venv .venv
-4. pip install -r requirements.txt
+
+```bash
+git clone https://github.com/AndreBaldermann/agentic_loop_benchmark_for_local_llms.git
+cd agentic_loop_benchmark_for_local_llms
+python -m venv .venv
+pip install -r requirements.txt
+```
 
 Now you need local llms. Install ollama if you dont have it, yet:
 
+```bash
 curl -fsSL https://ollama.com/install.sh | sh
 ollama --version
+```
 
 Install llms for running the demo without editing. Requires ca. 77 GB of memory:
 
+```bash
 ollama pull qwen3-coder-next
 ollama pull gemma4:26b-a4b-it-q4_K_M
 ollama pull deepseek-coder-v2
@@ -29,12 +35,18 @@ ollama pull llama3.1:8b
 
 Run the demo:
 
+```bash
 python3 basis_agentic_coding_loop.py \
   --config configs/loop_configs.csv \
   --prompt "Write a Python function add_two(x) that returns x + 2." \
   --pdf-report
+```
 
-Open the PDF-File under report/interactive_{date_time}/summary.pdf
+Open the PDF-File under:
+
+```text
+report/interactive_{date_time}/summary.pdf
+```
 
 # Friendly config
 
