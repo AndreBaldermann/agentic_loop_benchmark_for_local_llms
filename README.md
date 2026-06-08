@@ -82,6 +82,25 @@ The config file:
 | max_rounds           | Maximum number of unsuccessful coder/reviewer interactions before the test is forcefully stopped.                                  |
 | max_same_code_rounds | Like in chess. Repeat the same move twice, game over.                                                                              |
 
+## 3. Example PDF Outputs, Config File and Terminal Ouptut of a very simple config
+
+## Example 1
+
+![PDF Report of a variety of LLMs solving HumanEval Benchmark from OpenAI](docs/pictures/example_1.png)
+
+## Example 2
+
+![PDF Report of qwen coder solving HumanEval Benchmark from OpenAI at different temperatures](docs/pictures/example_2.png)
+
+## Example 3
+
+![Config File](docs/pictures/example_3.png)
+
+## Example 4
+
+![Full program output of a single agentic experiment](docs/pictures/example_4.png)
+
+
 ## 2. Validate loop configurations
 
 Before running many experiments, check that the CSV is valid:
