@@ -1,6 +1,6 @@
 # agentic_loop_benchmark_for_local_llms
 
-# Friendly Start :-)
+## Friendly Start :-)
 
 A beginner-friendly local tool for trying and benchmarking **agentic Coder/Reviewer loops** with local Ollama models.
 
@@ -48,7 +48,7 @@ Open the PDF-File under:
 report/interactive_{date_time}/summary.pdf
 ```
 
-# Friendly config
+## Friendly config
 
 Open configs/loop_configs.csv
 
@@ -63,25 +63,20 @@ consists of 2 tokens: "pre" and "dict". For source code the tokens are shorter t
 
 The config file:
 
-experiment_id       : Just an arbitrary name you can choose
-task_provider       : relevant for "benchmark run" command. HumanEval 
-                      is a standard test set of 164 tasks by OpenAI.
-coder_model         : put in the LLMs you want to test. Find options 
-                      on your system by executing command "ollama list"
-reviewer model      : analog to the coder_model, see above
-coder ctx           : coder context window. 32k tokens is a good start. 
-                      Most local llms should be more capable
-reviewer_ctx:       : reviewer context window
-coder_num_predict   : maximum length of response before model stops 
-                      execution. Good for short simple codes.
-reviewer_num_predict: analog to the coder_num_predict, see above
-coder_temperature   : creativity of the llm. Also may lead to 
-                      hallucinations. For the coder a value of 
-                      0.1 to 0.3 is generally considered good practice
-reviewer_temperature: analog to the coder_num_predict, see above
-max_rounds          : maximum number of unsuccesful code / reviewer 
-                      interactions before the test is forcefully stopped.
-max_same_code_rounds: Like in chess. Repeat the same move twice, game over.
+| Field                | Description                                                                                                                        |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| experiment_id        | Just an arbitrary name you can choose                                                                                              |
+| task_provider        | Relevant for "benchmark run" command. HumanEval is a standard test set of 164 tasks by OpenAI.                                     |
+| coder_model          | Put in the LLMs you want to test. Find options on your system by executing command `ollama list`.                                  |
+| reviewer_model       | Analog to the coder_model, see above.                                                                                              |
+| coder_ctx            | Coder context window. 32k tokens is a good start. Most local LLMs should be more capable.                                          |
+| reviewer_ctx         | Reviewer context window.                                                                                                           |
+| coder_num_predict    | Maximum length of response before model stops execution. Good for short simple codes.                                              |
+| reviewer_num_predict | Analog to the coder_num_predict, see above.                                                                                        |
+| coder_temperature    | Creativity of the LLM. Also may lead to hallucinations. For the coder a value of 0.1 to 0.3 is generally considered good practice. |
+| reviewer_temperature | Analog to the coder_num_predict, see above.                                                                                        |
+| max_rounds           | Maximum number of unsuccessful coder/reviewer interactions before the test is forcefully stopped.                                  |
+| max_same_code_rounds | Like in chess. Repeat the same move twice, game over.                                                                              |
 
 ## 2. Validate loop configurations
 
