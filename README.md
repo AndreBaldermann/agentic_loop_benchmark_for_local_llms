@@ -50,7 +50,11 @@ report/interactive_{date_time}/summary.pdf
 
 ## Friendly config
 
-Open configs/loop_configs.csv
+Open the config file in:
+
+```text
+configs/loop_configs.csv
+```
 
 It should be largely self-explanatory:
 
