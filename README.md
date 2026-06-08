@@ -1,10 +1,10 @@
 # agentic_loop_benchmark_for_local_llms
 
-## Friendly Start :-)
-
 A beginner-friendly local tool for trying and benchmarking **agentic Coder/Reviewer loops** with local Ollama models.
 
-How to directly use it in Ubuntu:
+## Friendly Start :-)
+
+### How to directly use it in Ubuntu:
 
 Prepare Environment:
 
@@ -47,6 +47,65 @@ Open the PDF-File under:
 
 ```text
 report/interactive_{date_time}/summary.pdf
+```
+### How to directly use it on Windows 10 / 11
+
+Open **PowerShell** and clone the repository:
+
+```powershell
+git clone https://github.com/AndreBaldermann/agentic_loop_benchmark_for_local_llms.git
+cd agentic_loop_benchmark_for_local_llms
+```
+
+Create and activate a virtual environment:
+
+```powershell
+python -m venv .venv
+.venv\Scripts\activate
+```
+
+Install dependencies:
+
+```powershell
+pip install -r requirements.txt
+```
+
+Now you need local LLMs. Install Ollama if you do not have it yet:
+
+1. Download and install Ollama from:
+   https://ollama.com/download/windows
+
+2. Verify the installation:
+
+```powershell
+ollama --version
+```
+
+Install the models required for the demo (approximately 77 GB disk space):
+
+```powershell
+ollama pull qwen3-coder-next
+ollama pull gemma4:26b-a4b-it-q4_K_M
+ollama pull deepseek-coder-v2
+ollama pull qwen2.5:32b
+ollama pull llama3.2:3b
+ollama pull llama3.2:1b
+ollama pull llama3.1:8b
+```
+
+Run the demo:
+
+```powershell
+python basis_agentic_coding_loop.py `
+  --config configs/loop_configs.csv `
+  --prompt "Write a Python function add(x, y) that returns x + y." `
+  --pdf-report
+```
+
+Open the generated PDF report:
+
+```text
+report\interactive_{date_time}\summary.pdf
 ```
 
 ## Friendly config
