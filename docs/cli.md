@@ -48,8 +48,9 @@ Options:
 | `--prompt` | none | Inline task text for non-interactive usage. |
 | `--prompt-file` | none | Text file containing the task, useful for multi-line prompts. |
 | `--pdf-report` | `false` | Generate `overview.pdf` from this interactive run's `summary.csv` after all config rows complete. |
-| `--pdf-output` | interactive output directory | Optional PDF path or directory for `--pdf-report`. |
+| `--pdf-output` | `reports/<interactive-run>/overview.pdf` | Optional PDF path or directory for `--pdf-report`. |
 | `--pdf-title` | `Agentic Benchmark Report` | Title used in the generated PDF report. |
+| `--pdf-transpose` | `false` | Swap task and experiment axes in the generated PDF report. |
 
 ### `run`
 
@@ -76,8 +77,9 @@ Options:
 | `--copy-config` | `true` | Copy the config CSV into the result directory. |
 | `--no-copy-config` | `false` | Disable config snapshot copying. |
 | `--pdf-report` | `false` | Generate `overview.pdf` from this run's `summary.csv` after the benchmark completes. |
-| `--pdf-output` | run output directory | Optional PDF path or directory for `--pdf-report`. |
+| `--pdf-output` | `reports/<run>/overview.pdf` | Optional PDF path or directory for `--pdf-report`. |
 | `--pdf-title` | `Agentic Benchmark Report` | Title used in the generated PDF report. |
+| `--pdf-transpose` | `false` | Swap task and experiment axes in the generated PDF report. |
 | `--provider` | `humaneval` | Deprecated; task provider is read from config rows. |
 
 Output:
@@ -85,6 +87,8 @@ Output:
 - `summary.csv`: one row per task/configuration/repetition.
 - `agent_calls.csv`: one row per concrete Coder or Reviewer model call.
 - `artifacts/`: generated code and JSON history files.
+- a snapshot copy of the config CSV when `--copy-config` is enabled.
+- `reports/<run>/overview.pdf` when `--pdf-report` is used without `--pdf-output`.
 
 ### `validate-config`
 
@@ -122,7 +126,7 @@ Options:
 
 ### `report-pdf`
 
-Generate an overview PDF from a benchmark `summary.csv`. Rows are `task_id` and columns are `experiment_id`. The report contains several matrices with the same layout: `R/TCT/TRT` for rounds and generated tokens, `TTNL/TTC/TTR` for execution time without model loading, `TTL/TLC/TLR` for load time, `ATPS/CTPS/RTPS` for generated-token throughput, `FC/TO/ERR` for failures, `SYN/APP/EVAL` for quality signals, and `Q/QPS/QPK` for simple efficiency views.
+Generate an overview PDF from a benchmark `summary.csv`. Rows are `task_id` and columns are `experiment_id` by default; use `--transpose` to swap the axes when there are many task or experiment columns. The report contains several matrices with the same layout: `R/TCT/TRT` for rounds and generated tokens, `TTNL/TTC/TTR` for execution time without model loading, `TTL/TLC/TLR` for load time, `ATPS/CTPS/RTPS` for generated-token throughput, `FC/TO/ERR` for failures, `SYN/APP/EVAL` for quality signals, and `Q/QPS/QPK` for simple efficiency views. Reports automatically choose A3/A2/A1/A0 landscape for increasingly wide column counts.
 
 ```bash
 python3 -m agentic_benchmark.cli report-pdf \
@@ -137,8 +141,9 @@ Options:
 |---|---:|---|
 | `--summary` | required | Path to `summary.csv` from a benchmark run. |
 | `--output` | required | Destination PDF path, or an existing directory where `overview.pdf` is written. |
-| `--agent-calls` | inferred next to `summary.csv` | Optional `agent_calls.csv` path used to aggregate TCT/TRT token columns. |
+| `--agent-calls` | inferred next to `summary.csv` | Optional `agent_calls.csv` path used to aggregate token, timing, loading, throughput, reliability, and quality columns. |
 | `--title` | `Agentic Benchmark Report` | Title printed on the PDF pages. |
+| `--transpose` | `false` | Swap task and experiment axes in the generated PDF report. |
 
 Generate the same PDF directly during an interactive prompt run:
 
@@ -155,7 +160,8 @@ python3 -m agentic_benchmark.cli run \
   --config configs/loop_configs.csv \
   --tasks HumanEval.jsonl.gz \
   --limit 1 \
-  --pdf-report
+  --pdf-report \
+  --pdf-transpose
 ```
 
 Color rules:

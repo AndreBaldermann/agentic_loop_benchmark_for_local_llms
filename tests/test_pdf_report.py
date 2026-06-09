@@ -3,7 +3,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from agentic_benchmark.reporting.pdf import aggregate_overview, generate_overview_pdf, text_command, token_color, TokenRange
+from agentic_benchmark.reporting.pdf import (
+    TokenRange,
+    aggregate_overview,
+    choose_landscape_page_size,
+    generate_overview_pdf,
+    text_command,
+    token_color,
+)
 
 
 class PdfReportTests(unittest.TestCase):
@@ -140,6 +147,35 @@ class PdfReportTests(unittest.TestCase):
         self.assertIn("0.350 0.820 0.350 rg", pdf_text)
         self.assertIn("0.900 0.250 0.250 rg", pdf_text)
         self.assertIn("1.00 w 0.000 0.000 0.000 RG", pdf_text)
+
+
+    def test_page_size_grows_with_column_count(self):
+        """Verify wide reports choose larger DIN landscape pages."""
+        self.assertEqual(choose_landscape_page_size(8)[0], "A4")
+        self.assertEqual(choose_landscape_page_size(9)[0], "A3")
+        self.assertEqual(choose_landscape_page_size(16)[0], "A2")
+        self.assertEqual(choose_landscape_page_size(32)[0], "A1")
+        self.assertEqual(choose_landscape_page_size(64)[0], "A0")
+
+    def test_transposed_pdf_uses_tasks_as_columns_and_a3_for_nine_columns(self):
+        """Verify transposed reports swap axes and grow page size for many task columns."""
+        with tempfile.TemporaryDirectory() as tmp:
+            summary_path = Path(tmp) / "summary.csv"
+            output_path = Path(tmp) / "overview.pdf"
+            fieldnames = ["run_id", "experiment_id", "task_id", "repetition", "max_rounds", "rounds_used", "stop_reason"]
+            with summary_path.open("w", encoding="utf-8", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(fieldnames)
+                for idx in range(9):
+                    writer.writerow([f"run{idx}", "wide_experiment", f"HumanEval/{idx}", "1", "5", "1", "done"])
+
+            generate_overview_pdf(summary_path, output_path, transpose=True)
+            pdf_text = output_path.read_text(encoding="latin-1")
+
+        self.assertIn("/MediaBox [0 0 1191 842]", pdf_text)
+        self.assertIn("(experiment_id)", pdf_text)
+        self.assertIn("(wide_experiment)", pdf_text)
+        self.assertIn("(HumanEval/8)", pdf_text)
 
     def test_zero_tokens_are_blue_and_positive_tokens_interpolate(self):
         """Verify token color rules use blue for zero and redder colors for higher usage."""

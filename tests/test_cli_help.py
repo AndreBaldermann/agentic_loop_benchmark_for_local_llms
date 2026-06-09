@@ -36,6 +36,7 @@ class CliHelpTests(unittest.TestCase):
             "--pdf-report",
             "--pdf-output",
             "--pdf-title",
+            "--pdf-transpose",
         ]:
             self.assertIn(option, help_text)
         self.assertEqual(cm.exception.code, 0)
@@ -54,6 +55,7 @@ class CliHelpTests(unittest.TestCase):
             "--task-id",
             "--pdf-report",
             "--pdf-output",
+            "--pdf-transpose",
         ]
         for option in expected_options:
             self.assertIn(option, help_text)
@@ -65,7 +67,7 @@ class CliHelpTests(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as stdout, self.assertRaises(SystemExit) as cm:
             parser.parse_args(["report-pdf", "--help"])
         help_text = stdout.getvalue()
-        for option in ["--summary", "--output", "--agent-calls", "--title"]:
+        for option in ["--summary", "--output", "--agent-calls", "--title", "--transpose"]:
             self.assertIn(option, help_text)
         self.assertEqual(cm.exception.code, 0)
 

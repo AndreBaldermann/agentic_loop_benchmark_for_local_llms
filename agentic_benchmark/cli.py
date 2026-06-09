@@ -105,6 +105,7 @@ def interactive(args: argparse.Namespace) -> int:
     task = BenchmarkTask(task_id="interactive", source="interactive", prompt=task_text)
     output_dir = Path(args.output_dir) / datetime.now().strftime("interactive_%Y%m%d_%H%M%S")
     writer = ResultsWriter(output_dir)
+    config_snapshot = copy_config_snapshot(args.config, output_dir)
     warmed_models: set[str] = set()
     total_runs = 0
 
@@ -126,6 +127,7 @@ def interactive(args: argparse.Namespace) -> int:
     print(f"Summary CSV:\n{writer.summary_path}")
     print(f"Agent Calls CSV:\n{writer.agent_calls_path}")
     print(f"Artifacts directory:\n{writer.artifacts_dir}")
+    print(f"Config snapshot:\n{config_snapshot}")
 
     if getattr(args, "pdf_report", False):
         pdf_output = resolve_pdf_output_path(output_dir, getattr(args, "pdf_output", None))
@@ -134,6 +136,7 @@ def interactive(args: argparse.Namespace) -> int:
             pdf_output,
             getattr(args, "pdf_title", "Agentic Benchmark Report"),
             writer.agent_calls_path,
+            transpose=getattr(args, "pdf_transpose", False),
         )
     return 0
 
@@ -204,19 +207,37 @@ def prepare_load_mode(config: ExperimentConfig, warmed: set[str]) -> None:
                 print(f"WARNING: unload failed for {agent.role} model {agent.model}: {result.error_message}")
 
 
+def copy_config_snapshot(config_path: str, output_dir: Path) -> Path:
+    """
+    Copy the loop configuration CSV into a result directory.
+
+    Args:
+        config_path, str: source experiment configuration CSV path.
+        output_dir, Path: run or interactive result directory.
+
+    Returns:
+        snapshot_path, Path: copied config path inside output_dir.
+    """
+    source = Path(config_path)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    snapshot_path = output_dir / source.name
+    snapshot_path.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    return snapshot_path
+
+
 def resolve_pdf_output_path(output_dir: Path, pdf_output: str | None) -> Path:
     """
     Resolve the PDF report output path for run/interactive --pdf-report.
 
     Args:
-        output_dir, Path: timestamped benchmark output directory.
+        output_dir, Path: timestamped benchmark output directory used to name the reports subfolder.
         pdf_output, str | None: optional user-provided PDF path or directory.
 
     Returns:
         output_path, Path: concrete PDF file path.
     """
     if not pdf_output:
-        return output_dir / "overview.pdf"
+        return Path("reports") / output_dir.name / "overview.pdf"
     output_path = Path(pdf_output)
     if output_path.exists() and output_path.is_dir():
         return output_path / "overview.pdf"
@@ -249,6 +270,8 @@ def generate_pdf_report_for_run(
     output_path: Path,
     title: str,
     agent_calls_path: Path | None = None,
+    *,
+    transpose: bool = False,
 ) -> int:
     """
     Generate an overview PDF and convert rendering errors into CLI status.
@@ -257,13 +280,20 @@ def generate_pdf_report_for_run(
         summary_path, Path: summary.csv produced by the benchmark run.
         output_path, Path: target PDF path.
         title, str: report title printed on each page.
-        agent_calls_path, Path | None: optional agent_calls.csv path for R/TCT/TRT token aggregation.
+        agent_calls_path, Path | None: optional agent_calls.csv path for report aggregation.
+        transpose, bool: swap PDF rows and columns when True.
 
     Returns:
         exit_code, int, 0 or 1: 0 when the PDF was written, otherwise 1.
     """
     try:
-        written = generate_overview_pdf(summary_path, output_path, title=title, agent_calls_path=agent_calls_path)
+        written = generate_overview_pdf(
+            summary_path,
+            output_path,
+            title=title,
+            agent_calls_path=agent_calls_path,
+            transpose=transpose,
+        )
     except (OSError, ValueError) as exc:
         print(f"ERROR: could not generate PDF report: {exc}")
         return 1
@@ -292,9 +322,9 @@ def run_benchmark(args: argparse.Namespace) -> int:
     output_dir = Path(args.output_dir) / datetime.now().strftime("run_%Y%m%d_%H%M%S")
     writer = ResultsWriter(output_dir)
 
+    config_snapshot = None
     if args.copy_config:
-        config_snapshot = output_dir / Path(args.config).name
-        config_snapshot.write_text(Path(args.config).read_text(encoding="utf-8"), encoding="utf-8")
+        config_snapshot = copy_config_snapshot(args.config, output_dir)
 
     total_runs = 0
     warmed_models: set[str] = set()
@@ -322,10 +352,18 @@ def run_benchmark(args: argparse.Namespace) -> int:
     print(f"\nWrote summary: {writer.summary_path}")
     print(f"Wrote agent calls: {writer.agent_calls_path}")
     print(f"Wrote artifacts: {writer.artifacts_dir}")
+    if config_snapshot:
+        print(f"Wrote config snapshot: {config_snapshot}")
 
     if args.pdf_report:
         pdf_output = resolve_pdf_output_path(output_dir, args.pdf_output)
-        return generate_pdf_report_for_run(writer.summary_path, pdf_output, args.pdf_title, writer.agent_calls_path)
+        return generate_pdf_report_for_run(
+            writer.summary_path,
+            pdf_output,
+            args.pdf_title,
+            writer.agent_calls_path,
+            transpose=args.pdf_transpose,
+        )
     return 0
 
 
@@ -344,7 +382,7 @@ def report_pdf(args: argparse.Namespace) -> int:
     if output_path.is_dir():
         output_path = output_path / "overview.pdf"
     agent_calls_path = infer_agent_calls_path(summary_path, args.agent_calls)
-    return generate_pdf_report_for_run(summary_path, output_path, args.title, agent_calls_path)
+    return generate_pdf_report_for_run(summary_path, output_path, args.title, agent_calls_path, transpose=args.transpose)
 
 
 def write_sample_config(args: argparse.Namespace) -> int:
@@ -468,12 +506,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     interactive_parser.add_argument(
         "--pdf-output",
-        help="Optional PDF path or directory for --pdf-report; defaults to the interactive output directory.",
+        help="Optional PDF path or directory for --pdf-report; defaults to reports/<interactive-run>/overview.pdf.",
     )
     interactive_parser.add_argument(
         "--pdf-title",
         default="Agentic Benchmark Report",
         help="Title used for --pdf-report.",
+    )
+    interactive_parser.add_argument(
+        "--pdf-transpose",
+        action="store_true",
+        help="Swap task and experiment axes in the generated PDF report.",
     )
     interactive_parser.set_defaults(func=interactive)
 
@@ -494,12 +537,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run_parser.add_argument(
         "--pdf-output",
-        help="Optional PDF path or directory for --pdf-report; defaults to the run output directory.",
+        help="Optional PDF path or directory for --pdf-report; defaults to reports/<run>/overview.pdf.",
     )
     run_parser.add_argument(
         "--pdf-title",
         default="Agentic Benchmark Report",
         help="Title used for --pdf-report.",
+    )
+    run_parser.add_argument(
+        "--pdf-transpose",
+        action="store_true",
+        help="Swap task and experiment axes in the generated PDF report.",
     )
     run_parser.set_defaults(func=run_benchmark)
 
@@ -519,6 +567,7 @@ def build_parser() -> argparse.ArgumentParser:
     pdf_parser.add_argument("--output", required=True, help="Destination PDF path or existing output directory.")
     pdf_parser.add_argument("--agent-calls", help="Optional agent_calls.csv path for Coder/Reviewer token columns; inferred next to summary.csv when present.")
     pdf_parser.add_argument("--title", default="Agentic Benchmark Report")
+    pdf_parser.add_argument("--transpose", action="store_true", help="Swap task and experiment axes in the generated PDF report.")
     pdf_parser.set_defaults(func=report_pdf)
 
     sample_parser = subparsers.add_parser("write-sample-config", help="Write an example loop configuration CSV.")

@@ -7,6 +7,13 @@ from typing import Any
 
 PAGE_WIDTH = 842.0
 PAGE_HEIGHT = 595.0
+PAGE_SIZES_LANDSCAPE = {
+    "A4": (842.0, 595.0),
+    "A3": (1191.0, 842.0),
+    "A2": (1684.0, 1191.0),
+    "A1": (2384.0, 1684.0),
+    "A0": (3370.0, 2384.0),
+}
 MARGIN = 28.0
 TITLE_FONT_SIZE = 16
 BODY_FONT_SIZE = 7
@@ -346,13 +353,16 @@ class SimplePdf:
     the drawing primitives needed for the benchmark overview table.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, page_width: float = PAGE_WIDTH, page_height: float = PAGE_HEIGHT) -> None:
         """
         Initialize an empty PDF document.
 
         Args:
-            None.
+            page_width, float: PDF media box width in points.
+            page_height, float: PDF media box height in points.
         """
+        self.page_width = page_width
+        self.page_height = page_height
         self.pages: list[list[str]] = []
 
     def add_page(self, commands: list[str]) -> None:
@@ -399,7 +409,7 @@ class SimplePdf:
             content = "\n".join(commands).encode("latin-1", errors="replace")
             objects.append(
                 f"{page_id} 0 obj\n"
-                f"<< /Type /Page /Parent {pages_id} 0 R /MediaBox [0 0 {PAGE_WIDTH:.0f} {PAGE_HEIGHT:.0f}] "
+                f"<< /Type /Page /Parent {pages_id} 0 R /MediaBox [0 0 {self.page_width:.0f} {self.page_height:.0f}] "
                 f"/Resources << /Font << /F1 {font_id} 0 R >> >> /Contents {content_id} 0 R >>\n"
                 "endobj\n"
             )
@@ -1403,11 +1413,35 @@ def draw_subcell(
     commands.append(text_command(x + 3, y + 6, label, size=size))
 
 
+def choose_landscape_page_size(column_count: int) -> tuple[str, float, float]:
+    """
+    Choose a DIN landscape page size from the number of visible table columns.
+
+    Args:
+        column_count, int, >= 0: number of task/experiment groups displayed as PDF columns.
+
+    Returns:
+        page_size, tuple[str, float, float]: DIN label plus width and height in PDF points.
+    """
+    if column_count >= 64:
+        label = "A0"
+    elif column_count >= 32:
+        label = "A1"
+    elif column_count >= 16:
+        label = "A2"
+    elif column_count > 8:
+        label = "A3"
+    else:
+        label = "A4"
+    width, height = PAGE_SIZES_LANDSCAPE[label]
+    return label, width, height
+
+
 def draw_table_page(
     *,
     title: str,
-    tasks: list[str],
-    experiments: list[str],
+    rows: list[str],
+    columns: list[str],
     cells: dict[tuple[str, str], OverviewCell],
     token_ranges: tuple[TokenRange, TokenRange],
     time_ranges: tuple[TokenRange, TokenRange, TokenRange] | None = None,
@@ -1415,14 +1449,17 @@ def draw_table_page(
     table_kind: str = "tokens",
     page_number: int,
     total_pages_hint: int,
+    transpose: bool = False,
+    page_width: float = PAGE_WIDTH,
+    page_height: float = PAGE_HEIGHT,
 ) -> list[str]:
     """
     Draw one paginated overview table page.
 
     Args:
         title, str: report title.
-        tasks, list[str]: task ids included on this page.
-        experiments, list[str]: experiment ids included on this page.
+        rows, list[str]: row labels included on this page.
+        columns, list[str]: column labels included on this page.
         cells, dict[tuple[str, str], OverviewCell]: task/experiment matrix values.
         token_ranges, tuple[TokenRange, TokenRange]: Coder and Reviewer token color ranges.
         time_ranges, tuple[TokenRange, TokenRange, TokenRange] | None: backwards-compatible total/Coder/Reviewer time color ranges.
@@ -1430,6 +1467,9 @@ def draw_table_page(
         table_kind, str: metric table kind to draw.
         page_number, int, >= 1: current page index.
         total_pages_hint, int, >= 1: total generated pages for footer display.
+        transpose, bool: when True, experiments are rows and task ids are columns.
+        page_width, float: PDF page width in points.
+        page_height, float: PDF page height in points.
 
     Returns:
         commands, list[str]: PDF drawing commands for the page.
@@ -1484,54 +1524,56 @@ def draw_table_page(
     }
     sub_columns, overview_text, legend_labels = table_specs.get(table_kind, table_specs["tokens"])
 
-    commands.append(text_command(MARGIN, PAGE_HEIGHT - 24, title, size=TITLE_FONT_SIZE))
-    commands.append(text_command(MARGIN, PAGE_HEIGHT - 40, overview_text, size=8))
+    commands.append(text_command(MARGIN, page_height - 24, title, size=TITLE_FONT_SIZE))
+    commands.append(text_command(MARGIN, page_height - 40, overview_text, size=8))
     draw_color_legend(
         commands,
         MARGIN,
-        PAGE_HEIGHT - 58,
+        page_height - 58,
         green_label=legend_labels[0],
         red_label=legend_labels[1],
         gray_label=legend_labels[2],
         blue_label=legend_labels[3],
     )
 
-    available_width = PAGE_WIDTH - 2 * MARGIN - TASK_COL_WIDTH
+    available_width = page_width - 2 * MARGIN - TASK_COL_WIDTH
     group_width = min(
         MAX_EXPERIMENT_GROUP_WIDTH,
-        max(MIN_EXPERIMENT_GROUP_WIDTH, available_width / max(1, len(experiments))),
+        max(MIN_EXPERIMENT_GROUP_WIDTH, available_width / max(1, len(columns))),
     )
     sub_width = group_width / len(sub_columns)
-    table_top = PAGE_HEIGHT - 94
+    table_top = page_height - 94
     header_y = table_top - ROW_HEIGHT
     info_y = header_y - ROW_HEIGHT
 
     commands.append(fill_rect_command(MARGIN, header_y, TASK_COL_WIDTH, ROW_HEIGHT, (0.88, 0.88, 0.88)))
     commands.append(stroke_rect_command(MARGIN, header_y, TASK_COL_WIDTH, ROW_HEIGHT))
-    commands.append(text_command(MARGIN + 4, header_y + 6, "task_id", size=HEADER_FONT_SIZE))
+    row_header = "experiment_id" if transpose else "task_id"
+    commands.append(text_command(MARGIN + 4, header_y + 6, row_header, size=HEADER_FONT_SIZE))
     commands.append(fill_rect_command(MARGIN, info_y, TASK_COL_WIDTH, ROW_HEIGHT, (0.94, 0.94, 0.94)))
     commands.append(stroke_rect_command(MARGIN, info_y, TASK_COL_WIDTH, ROW_HEIGHT))
     commands.append(text_command(MARGIN + 4, info_y + 6, "Info", size=HEADER_FONT_SIZE))
 
-    for col_idx, experiment in enumerate(experiments):
+    for col_idx, column_label in enumerate(columns):
         group_x = MARGIN + TASK_COL_WIDTH + col_idx * group_width
         commands.append(fill_rect_command(group_x, header_y, group_width, ROW_HEIGHT, (0.88, 0.88, 0.88)))
         commands.append(stroke_rect_command(group_x, header_y, group_width, ROW_HEIGHT))
-        commands.append(text_command(group_x + 3, header_y + 6, truncate_text(experiment, 18), size=HEADER_FONT_SIZE))
+        commands.append(text_command(group_x + 3, header_y + 6, truncate_text(column_label, 18), size=HEADER_FONT_SIZE))
         for sub_idx, sub_label in enumerate(sub_columns):
             sub_x = group_x + sub_idx * sub_width
             commands.append(fill_rect_command(sub_x, info_y, sub_width, ROW_HEIGHT, (0.94, 0.94, 0.94)))
             commands.append(stroke_rect_command(sub_x, info_y, sub_width, ROW_HEIGHT))
             commands.append(text_command(sub_x + 3, info_y + 6, sub_label, size=HEADER_FONT_SIZE))
 
-    for row_idx, task_id in enumerate(tasks):
+    for row_idx, row_label in enumerate(rows):
         y = info_y - (row_idx + 1) * ROW_HEIGHT
         commands.append(fill_rect_command(MARGIN, y, TASK_COL_WIDTH, ROW_HEIGHT, (0.98, 0.98, 0.98)))
         commands.append(stroke_rect_command(MARGIN, y, TASK_COL_WIDTH, ROW_HEIGHT))
-        commands.append(text_command(MARGIN + 4, y + 6, truncate_text(task_id, 28), size=BODY_FONT_SIZE))
-        for col_idx, experiment in enumerate(experiments):
+        commands.append(text_command(MARGIN + 4, y + 6, truncate_text(row_label, 28), size=BODY_FONT_SIZE))
+        for col_idx, column_label in enumerate(columns):
             group_x = MARGIN + TASK_COL_WIDTH + col_idx * group_width
-            cell = cells.get((task_id, experiment))
+            cell_key = (column_label, row_label) if transpose else (row_label, column_label)
+            cell = cells.get(cell_key)
             if cell and table_kind == "times":
                 labels = (cell.total_execution_label(), cell.coder_execution_label(), cell.reviewer_execution_label())
                 colors = (
@@ -1587,14 +1629,14 @@ def draw_table_page(
             for sub_idx, (label, color) in enumerate(zip(labels, colors)):
                 draw_subcell(commands, group_x + sub_idx * sub_width, y, sub_width, label, color)
 
-    table_bottom = info_y - len(tasks) * ROW_HEIGHT
+    table_bottom = info_y - len(rows) * ROW_HEIGHT
     table_top_line = header_y + ROW_HEIGHT
-    for col_idx in range(1, len(experiments)):
+    for col_idx in range(1, len(columns)):
         separator_x = MARGIN + TASK_COL_WIDTH + col_idx * group_width
         commands.append(line_command(separator_x, table_bottom, separator_x, table_top_line, width=1.0))
 
     footer = f"Page {page_number}/{total_pages_hint}"
-    commands.append(text_command(PAGE_WIDTH - MARGIN - 70, 16, footer, size=7))
+    commands.append(text_command(page_width - MARGIN - 70, 16, footer, size=7))
     return commands
 
 def generate_overview_pdf(
@@ -1603,6 +1645,7 @@ def generate_overview_pdf(
     *,
     title: str = "Agentic Benchmark Report",
     agent_calls_path: str | Path | None = None,
+    transpose: bool = False,
 ) -> Path:
     """
     Generate an overview PDF from summary.csv and optional agent_calls.csv.
@@ -1612,6 +1655,7 @@ def generate_overview_pdf(
         output_path, str | Path: destination PDF path.
         title, str: document title printed on each page.
         agent_calls_path, str | Path | None: optional per-call CSV used for token, timing, loading, throughput, reliability, and partial quality aggregation.
+        transpose, bool: when True, experiments are rows and task ids are columns.
 
     Returns:
         output_path, Path: written PDF path.
@@ -1631,23 +1675,27 @@ def generate_overview_pdf(
     time_ranges = metric_ranges["times"]
     table_kinds = ("tokens", "times", "loads", "tps", "reliability", "quality", "efficiency")
 
-    available_width = PAGE_WIDTH - 2 * MARGIN - TASK_COL_WIDTH
-    experiments_per_page = max(1, int(available_width // MIN_EXPERIMENT_GROUP_WIDTH))
-    rows_per_page = max(1, int((PAGE_HEIGHT - 134) // ROW_HEIGHT))
-    experiment_chunks = [experiments[i : i + experiments_per_page] for i in range(0, len(experiments), experiments_per_page)]
-    task_chunks = [tasks[i : i + rows_per_page] for i in range(0, len(tasks), rows_per_page)]
-    total_pages = max(1, len(experiment_chunks) * len(task_chunks) * len(table_kinds))
+    row_values = experiments if transpose else tasks
+    column_values = tasks if transpose else experiments
+    _, page_width, page_height = choose_landscape_page_size(len(column_values))
 
-    pdf = SimplePdf()
+    available_width = page_width - 2 * MARGIN - TASK_COL_WIDTH
+    columns_per_page = max(1, int(available_width // MIN_EXPERIMENT_GROUP_WIDTH))
+    rows_per_page = max(1, int((page_height - 134) // ROW_HEIGHT))
+    column_chunks = [column_values[i : i + columns_per_page] for i in range(0, len(column_values), columns_per_page)]
+    row_chunks = [row_values[i : i + rows_per_page] for i in range(0, len(row_values), rows_per_page)]
+    total_pages = max(1, len(column_chunks) * len(row_chunks) * len(table_kinds))
+
+    pdf = SimplePdf(page_width=page_width, page_height=page_height)
     page_number = 1
-    for experiment_chunk in experiment_chunks:
-        for task_chunk in task_chunks:
+    for column_chunk in column_chunks:
+        for row_chunk in row_chunks:
             for table_kind in table_kinds:
                 pdf.add_page(
                     draw_table_page(
                         title=title,
-                        tasks=task_chunk,
-                        experiments=experiment_chunk,
+                        rows=row_chunk,
+                        columns=column_chunk,
                         cells=cells,
                         token_ranges=token_ranges,
                         time_ranges=time_ranges,
@@ -1655,6 +1703,9 @@ def generate_overview_pdf(
                         table_kind=table_kind,
                         page_number=page_number,
                         total_pages_hint=total_pages,
+                        transpose=transpose,
+                        page_width=page_width,
+                        page_height=page_height,
                     )
                 )
                 page_number += 1

@@ -186,7 +186,8 @@ The benchmark writes a timestamped result directory containing:
 - `summary.csv`: one row per task/configuration/repetition
 - `agent_calls.csv`: one row per concrete Coder or Reviewer model call
 - `artifacts/`: final generated code and per-run JSON history
-- `overview.pdf` when `--pdf-report` is used
+- a snapshot copy of the config CSV
+- `reports/run_YYYYMMDD_HHMMSS/overview.pdf` when `--pdf-report` is used
 
 ## 4. Generate overview PDF later
 
@@ -197,7 +198,7 @@ python3 -m agentic_benchmark.cli report-pdf \
   --output reports/overview.pdf
 ```
 
-The PDF overview subdivides every task/experiment cell into `R` (rounds/max rounds), `TCT` (total generated Coder tokens), and `TRT` (total generated Reviewer tokens).
+The PDF overview contains multiple matrix tables with the same task/experiment layout: `R/TCT/TRT` for rounds and generated tokens, `TTNL/TTC/TTR` for execution time without model loading, `TTL/TLC/TLR` for load time, `ATPS/CTPS/RTPS` for generated-token throughput, `FC/TO/ERR` for failures, `SYN/APP/EVAL` for quality signals, and `Q/QPS/QPK` for simple efficiency views. Use `--pdf-transpose` or `report-pdf --transpose` to swap tasks and experiments. Wide reports automatically switch from A4 landscape to A3/A2/A1/A0 as the number of visible columns grows.
 
 ## CLI reference
 
