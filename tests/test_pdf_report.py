@@ -177,6 +177,29 @@ class PdfReportTests(unittest.TestCase):
         self.assertIn("(wide_experiment)", pdf_text)
         self.assertIn("(HumanEval/8)", pdf_text)
 
+    def test_metric_pages_stay_grouped_when_rows_overflow(self):
+        """Verify all row pages for one metric are emitted before the next metric table."""
+        with tempfile.TemporaryDirectory() as tmp:
+            summary_path = Path(tmp) / "summary.csv"
+            output_path = Path(tmp) / "overview.pdf"
+            fieldnames = ["run_id", "experiment_id", "task_id", "repetition", "max_rounds", "rounds_used", "stop_reason"]
+            with summary_path.open("w", encoding="utf-8", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(fieldnames)
+                for idx in range(30):
+                    writer.writerow([f"run{idx}", "exp", f"HumanEval/{idx}", "1", "5", "1", "done"])
+
+            generate_overview_pdf(summary_path, output_path)
+            pdf_text = output_path.read_text(encoding="latin-1")
+
+        first_tokens = pdf_text.find("Overview: R=rounds_used/max_rounds")
+        second_tokens = pdf_text.find("Overview: R=rounds_used/max_rounds", first_tokens + 1)
+        first_timing = pdf_text.find("Timing: TTNL=Coder+Reviewer execution time")
+        self.assertGreaterEqual(first_tokens, 0)
+        self.assertGreaterEqual(second_tokens, 0)
+        self.assertGreaterEqual(first_timing, 0)
+        self.assertLess(second_tokens, first_timing)
+
     def test_zero_tokens_are_blue_and_positive_tokens_interpolate(self):
         """Verify token color rules use blue for zero and redder colors for higher usage."""
         low = token_color(10, TokenRange(10, 100))

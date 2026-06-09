@@ -1688,9 +1688,9 @@ def generate_overview_pdf(
 
     pdf = SimplePdf(page_width=page_width, page_height=page_height)
     page_number = 1
-    for column_chunk in column_chunks:
-        for row_chunk in row_chunks:
-            for table_kind in table_kinds:
+    for table_kind in table_kinds:
+        for column_chunk in column_chunks:
+            for row_chunk in row_chunks:
                 pdf.add_page(
                     draw_table_page(
                         title=title,
