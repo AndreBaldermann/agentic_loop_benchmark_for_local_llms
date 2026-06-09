@@ -1,3 +1,9 @@
-experiment_id,task_provider,coder_model,reviewer_model,coder_ctx,reviewer_ctx,coder_num_predict,reviewer_num_predict,coder_timeout_seconds,reviewer_timeout_seconds,coder_temperature,reviewer_temperature,max_rounds,max_same_code_rounds,feedback_mode,stop_policy,coder_prompt_template,reviewer_prompt_template,keep_alive,load_mode,repetitions,evaluator
-qwen_self_review,humaneval,qwen3-coder-next:latest,qwen3-coder-next:latest,32768,16384,4096,2048,600,600,0.1,0.0,5,2,compact_json,reviewer_approved_and_syntax_ok,coder_default,reviewer_default,10m,cold,1,syntax
-qwen_no_review,humaneval,qwen3-coder-next:latest,,32768,0,4096,0,600,600,0.1,0.0,1,1,none,single_coder_round,coder_default,,10m,cold,1,syntax
+experiment_id,task_provider,coder_model,reviewer_model,coder_ctx,reviewer_ctx,coder_num_predict,reviewer_num_predict,coder_temperature,reviewer_temperature,max_rounds,max_same_code_rounds,feedback_mode,stop_policy,coder_prompt_template,reviewer_prompt_template,keep_alive,load_mode,repetitions,evaluator
+qwen3-coder-next,humaneval,qwen3-coder-next:latest,qwen3-coder-next:latest,32768,16384,4096,2048,0.1,0,5,2,compact_json,reviewer_approved_and_syntax_ok,coder_default,reviewer_default,10m,as_is,1,syntax
+gemma4:26b-a4b-it-q4_K_M,humaneval,gemma4:26b-a4b-it-q4_K_M,gemma4:26b-a4b-it-q4_K_M,32768,16384,4096,2048,0.1,0,5,2,compact_json,reviewer_approved_and_syntax_ok,coder_default,reviewer_default,10m,as_is,1,syntax
+deepseek-coder-v2:latest,humaneval,deepseek-coder-v2:latest,deepseek-coder-v2:latest,32768,16384,4096,2048,0.1,0,5,2,compact_json,reviewer_approved_and_syntax_ok,coder_default,reviewer_default,10m,as_is,1,syntax
+qwen2.5-coder:32b  ,humaneval,qwen2.5-coder:32b  ,qwen2.5-coder:32b  ,32768,16384,4096,2048,0.1,0,5,2,compact_json,reviewer_approved_and_syntax_ok,coder_default,reviewer_default,10m,as_is,1,syntax
+llama3.2:3b,humaneval,llama3.2:3b,llama3.2:3b,32768,16384,4096,2048,0.1,0,5,2,compact_json,reviewer_approved_and_syntax_ok,coder_default,reviewer_default,10m,as_is,1,syntax
+llama3.2:1b,humaneval,llama3.2:1b,llama3.2:1b,32768,16384,4096,2048,0.1,0,5,2,compact_json,reviewer_approved_and_syntax_ok,coder_default,reviewer_default,10m,as_is,1,syntax
+llama3.1:8b,humaneval,llama3.1:8b,llama3.1:8b,32768,16384,4096,2048,0.1,0,5,2,compact_json,reviewer_approved_and_syntax_ok,coder_default,reviewer_default,10m,as_is,1,syntax
+qwen3.6:latest,humaneval,qwen3.6:latest,qwen3.6:latest,32768,16384,4096,2048,0.1,0,5,2,compact_json,reviewer_approved_and_syntax_ok,coder_default,reviewer_default,10m,as_is,1,syntax
